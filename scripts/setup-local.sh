@@ -81,6 +81,24 @@ else
         curl -fsSL https://ollama.com/install.sh | sudo sh
     fi
 fi
+
+# Configure Ollama service for GPU performance
+echo "Configuring Ollama service..."
+OLLAMA_OVERRIDE_DIR="/etc/systemd/system/ollama.service.d"
+if [ ! -f "$OLLAMA_OVERRIDE_DIR/override.conf" ] || ! grep -q "OLLAMA_FLASH_ATTENTION" "$OLLAMA_OVERRIDE_DIR/override.conf" 2>/dev/null; then
+    sudo mkdir -p "$OLLAMA_OVERRIDE_DIR"
+    sudo tee "$OLLAMA_OVERRIDE_DIR/override.conf" > /dev/null <<CONF
+[Service]
+Environment="OLLAMA_KEEP_ALIVE=-1"
+Environment="OLLAMA_FLASH_ATTENTION=1"
+Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+CONF
+    sudo systemctl daemon-reload
+    sudo systemctl restart ollama
+    echo "Ollama configured: flash attention, q8_0 KV cache, keep-alive=-1"
+else
+    echo "Ollama already configured."
+fi
 echo ""
 
 # Step 4: Pull model
