@@ -1,0 +1,100 @@
+diff --git a/biomni/agent/a1.py b/biomni/agent/a1.py
+index 7a62e59..080512a 100644
+--- a/biomni/agent/a1.py
++++ b/biomni/agent/a1.py
+@@ -1379,12 +1379,14 @@ Each library is listed with its description to help you understand its functiona
+ 
+         # Define the nodes
+         def generate(state: AgentState) -> AgentState:
+-            # Add OpenAI-specific formatting reminders if using OpenAI models
++            # Add formatting reminders for non-Anthropic models
+             system_prompt = self.system_prompt
+             if hasattr(self.llm, "model_name") and (
+                 "gpt" in str(self.llm.model_name).lower() or "openai" in str(type(self.llm)).lower()
+             ):
+                 system_prompt += "\n\nIMPORTANT FOR GPT MODELS: You MUST use XML tags <execute> or <solution> in EVERY response. Do not use markdown code blocks (```) - use <execute> tags instead."
++            if "ollama" in str(type(self.llm)).lower():
++                system_prompt += "\n\nIMPORTANT: You MUST use XML tags <execute> or <solution> in EVERY response. Do not use markdown code blocks (```) - use <execute> tags instead. For simple questions that don't need code, wrap your answer in <solution>your answer</solution>."
+ 
+             messages = [SystemMessage(content=system_prompt)] + state["messages"]
+             response = self.llm.invoke(messages)
+@@ -1419,15 +1421,18 @@ Each library is listed with its description to help you understand its functiona
+             if "<think>" in msg and "</think>" not in msg:
+                 msg += "</think>"
+ 
+-            # More flexible pattern matching for different LLM styles
++            # Strip <think> blocks so action tags in the remainder are found
+             think_match = re.search(r"<think>(.*?)</think>", msg, re.DOTALL | re.IGNORECASE)
+-            execute_match = re.search(r"<execute>(.*?)</execute>", msg, re.DOTALL | re.IGNORECASE)
+-            answer_match = re.search(r"<solution>(.*?)</solution>", msg, re.DOTALL | re.IGNORECASE)
++            msg_for_parsing = re.sub(r"<think>.*?</think>", "", msg, flags=re.DOTALL | re.IGNORECASE).strip() if think_match else msg
++
++            # More flexible pattern matching for different LLM styles
++            execute_match = re.search(r"<execute>(.*?)</execute>", msg_for_parsing, re.DOTALL | re.IGNORECASE)
++            answer_match = re.search(r"<solution>(.*?)</solution>", msg_for_parsing, re.DOTALL | re.IGNORECASE)
+ 
+             # Alternative patterns for OpenAI models that might use different formatting
+             if not execute_match:
+                 # Try to find code blocks that might be intended as execute blocks
+-                code_block_match = re.search(r"```(?:python|bash|r)?\s*(.*?)```", msg, re.DOTALL)
++                code_block_match = re.search(r"```(?:python|bash|r)?\s*(.*?)```", msg_for_parsing, re.DOTALL)
+                 if code_block_match and not answer_match:
+                     # If we found a code block and no solution, treat it as execute
+                     execute_match = code_block_match
+@@ -1439,7 +1444,8 @@ Each library is listed with its description to help you understand its functiona
+                 state["next_step"] = "end"
+             elif execute_match:
+                 state["next_step"] = "execute"
+-            elif think_match:
++            elif think_match and not msg_for_parsing:
++                # Only loop back if the model ONLY produced thinking with no action
+                 state["next_step"] = "generate"
+             else:
+                 print("parsing error...")
+@@ -1470,6 +1476,8 @@ Each library is listed with its description to help you understand its functiona
+ 
+         def execute(state: AgentState) -> AgentState:
+             last_message = state["messages"][-1].content
++            # Strip <think> blocks before extracting code
++            last_message = re.sub(r"<think>.*?</think>", "", last_message, flags=re.DOTALL | re.IGNORECASE).strip()
+             # Only add the closing tag if it's not already there
+             if "<execute>" in last_message and "</execute>" not in last_message:
+                 last_message += "</execute>"
+@@ -2966,18 +2974,12 @@ Each library is listed with its description to help you understand its functiona
+                     with gr.Column(scale=1):
+                         main_chatbot = gr.Chatbot(
+                             label="Biomni A1 Agent",
+-                            type="messages",
+                             height=800,
+-                            show_copy_button=True,
+-                            show_share_button=True,
+                         )
+                     with gr.Column(scale=1):
+                         innerloop_chatbot = gr.Chatbot(
+                             label="Biomni Executor",
+-                            type="messages",
+                             height=800,
+-                            show_copy_button=True,
+-                            show_share_button=True,
+                         )
+ 
+                 with gr.Row():
+@@ -2998,4 +3000,4 @@ Each library is listed with its description to help you understand its functiona
+ 
+         # Launch
+         print(f"Launching Gradio demo on {server_name}:7860")
+-        demo.launch(share=share, server_name=server_name)
++        demo.launch(share=share, server_name=server_name, strict_cors=False, ssr_mode=False)
+diff --git a/biomni/llm.py b/biomni/llm.py
+index 1ca4e6a..dfdbfac 100644
+--- a/biomni/llm.py
++++ b/biomni/llm.py
+@@ -234,6 +234,8 @@ def get_llm(
+         return ChatOllama(
+             model=model,
+             temperature=temperature,
++            reasoning=False,
++            num_ctx=65536,
+         )
+ 
+     elif source == "Bedrock":
