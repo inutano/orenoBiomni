@@ -92,6 +92,7 @@ if [ ! -f "$OLLAMA_OVERRIDE_DIR/override.conf" ] || ! grep -q "OLLAMA_FLASH_ATTE
 Environment="OLLAMA_KEEP_ALIVE=-1"
 Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+Environment="OLLAMA_HOST=0.0.0.0"
 CONF
     sudo systemctl daemon-reload
     sudo systemctl restart ollama
