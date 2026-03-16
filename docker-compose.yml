@@ -1,0 +1,90 @@
+services:
+  # Biomni application (no GPU needed)
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: minimal  # or "full" for bio tools
+    ports:
+      - "${BIOMNI_PORT:-7860}:7860"
+    environment:
+      - BIOMNI_LLM=${BIOMNI_LLM:-qwen3.5:35b-a3b-q8_0}
+      - BIOMNI_SOURCE=${BIOMNI_SOURCE:-Ollama}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - BIOMNI_DATA_PATH=./data
+      - BIOMNI_TIMEOUT_SECONDS=${BIOMNI_TIMEOUT_SECONDS:-600}
+      # For non-Ollama providers:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - BIOMNI_CUSTOM_BASE_URL=${BIOMNI_CUSTOM_BASE_URL:-}
+      - BIOMNI_CUSTOM_API_KEY=${BIOMNI_CUSTOM_API_KEY:-}
+    volumes:
+      - biomni-data:/app/Biomni/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Ollama model server (GPU required)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_KV_CACHE_TYPE=q8_0
+    volumes:
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  # PostgreSQL (for Phase 2: sessions, users, history)
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     - POSTGRES_DB=orenoiomni
+  #     - POSTGRES_USER=${POSTGRES_USER:-biomni}
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U biomni"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
+
+  # Redis (for Phase 2: job queue, cache)
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
+
+volumes:
+  biomni-data:
+  ollama-models:
+  # postgres-data:
+  # redis-data:
