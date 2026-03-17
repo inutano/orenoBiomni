@@ -27,3 +27,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Biomni upstream (copied/cloned separately, not committed)
+Biomni/

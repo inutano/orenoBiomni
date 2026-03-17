@@ -1,0 +1,47 @@
+# orenoBiomni Backend (FastAPI)
+#
+# Build:
+#   docker build -t orenoiomni-backend -f docker/Dockerfile.backend .
+
+FROM condaforge/miniforge3:latest AS base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Create conda env from Biomni's environment.yml
+COPY Biomni/biomni_env/environment.yml /tmp/environment.yml
+RUN conda env create -f /tmp/environment.yml -n biomni_e1 \
+    && conda clean -afy \
+    && rm /tmp/environment.yml
+
+# Install backend dependencies
+SHELL ["conda", "run", "-n", "biomni_e1", "/bin/bash", "-c"]
+RUN pip install -q \
+    "fastapi>=0.115" \
+    "uvicorn[standard]>=0.34" \
+    "sqlalchemy[asyncio]>=2.0" \
+    "asyncpg>=0.30" \
+    "alembic>=1.14" \
+    "pydantic-settings>=2.7" \
+    "sse-starlette>=2.2"
+
+# Copy and install Biomni
+COPY Biomni /app/Biomni
+COPY patches /app/patches
+WORKDIR /app/Biomni
+RUN git apply /app/patches/biomni-ollama-compat.patch 2>/dev/null || true
+RUN pip install -e . -q
+
+# Copy backend
+COPY backend /app/backend
+WORKDIR /app
+
+COPY docker/entrypoint-backend.sh /app/entrypoint-backend.sh
+RUN chmod +x /app/entrypoint-backend.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/app/entrypoint-backend.sh"]

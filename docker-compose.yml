@@ -1,5 +1,5 @@
 services:
-  # Biomni application (no GPU needed)
+  # Biomni Gradio UI (no GPU needed)
   app:
     build:
       context: .
@@ -10,24 +10,52 @@ services:
     environment:
       - BIOMNI_LLM=${BIOMNI_LLM:-qwen3.5:35b-a3b-q8_0}
       - BIOMNI_SOURCE=${BIOMNI_SOURCE:-Ollama}
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - BIOMNI_DATA_PATH=./data
       - BIOMNI_TIMEOUT_SECONDS=${BIOMNI_TIMEOUT_SECONDS:-600}
-      # For non-Ollama providers:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - BIOMNI_CUSTOM_BASE_URL=${BIOMNI_CUSTOM_BASE_URL:-}
       - BIOMNI_CUSTOM_API_KEY=${BIOMNI_CUSTOM_API_KEY:-}
     volumes:
       - biomni-data:/app/Biomni/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # FastAPI backend (API + sessions + streaming)
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-biomni}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/orenoiomni
+      - BIOMNI_LLM=${BIOMNI_LLM:-qwen3.5:35b-a3b-q8_0}
+      - BIOMNI_SOURCE=${BIOMNI_SOURCE:-Ollama}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - BIOMNI_DATA_PATH=./data
+      - BIOMNI_TIMEOUT_SECONDS=${BIOMNI_TIMEOUT_SECONDS:-600}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - BIOMNI_CUSTOM_BASE_URL=${BIOMNI_CUSTOM_BASE_URL:-}
+      - BIOMNI_CUSTOM_API_KEY=${BIOMNI_CUSTOM_API_KEY:-}
+    volumes:
+      - biomni-data:/app/Biomni/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      ollama:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
   # Ollama model server (GPU required)
+  # Use: docker compose --profile gpu up
+  # Or run Ollama on host and set OLLAMA_BASE_URL=http://host.docker.internal:11434
   ollama:
     image: ollama/ollama:latest
+    profiles: ["gpu"]
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     environment:
@@ -51,25 +79,25 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # PostgreSQL (for Phase 2: sessions, users, history)
-  # postgres:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     - POSTGRES_DB=orenoiomni
-  #     - POSTGRES_USER=${POSTGRES_USER:-biomni}
-  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
-  #   volumes:
-  #     - postgres-data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U biomni"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-  #   restart: unless-stopped
+  # PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=orenoiomni
+      - POSTGRES_USER=${POSTGRES_USER:-biomni}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-biomni}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
-  # Redis (for Phase 2: job queue, cache)
+  # Redis (for Phase 2b: job queue)
   # redis:
   #   image: redis:7-alpine
   #   ports:
@@ -86,5 +114,5 @@ services:
 volumes:
   biomni-data:
   ollama-models:
-  # postgres-data:
+  postgres-data:
   # redis-data:
