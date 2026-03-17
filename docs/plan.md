@@ -60,22 +60,32 @@
                     +-------------+
 ```
 
-## Phase 1: Containerization & Cloud Deploy (2-3 weeks)
+## Phase 1: Containerization & Cloud Deploy — COMPLETE
 
 ### Deliverables
 
-- [ ] `Dockerfile` — multi-stage: base CUDA -> bio-tools -> app
-- [ ] `Dockerfile.ollama` — GPU model server
-- [ ] `docker-compose.yml` — app + ollama + postgres + redis
-- [ ] `deploy.sh` — cloud provisioning (detect GPU, install drivers, pull images)
-- [ ] Terraform templates for AWS (EC2 GPU + security groups)
-- [ ] Data lake: lazy-download from S3 on first use (already supported upstream)
+- [x] `Dockerfile` — multi-stage: `minimal` (~3GB) and `full` (~17GB) targets
+- [x] `docker-compose.yml` — app + ollama (GPU), postgres/redis ready for Phase 2
+- [x] `deploy.sh` — cloud provisioning (detect GPU/cloud, install drivers, Docker, NVIDIA toolkit)
+- [x] Terraform templates for AWS (EC2 GPU + security group with CIDR restrict + EBS)
+- [x] Data lake: lazy-download from S3 on first use (already supported upstream)
+- [x] `entrypoint.sh` — waits for Ollama, auto-pulls model, pre-warms, then launches
+- [x] Ollama service tuning (flash attention, q8_0 KV cache, keep-alive, bind 0.0.0.0)
+
+### Tested
+
+- [x] `minimal` image builds and runs (~2min build)
+- [x] `full` image builds (~17GB with all bio tools)
+- [x] App container connects to Ollama, pre-warms model, serves Gradio UI (HTTP 200)
+- [ ] `deploy.sh` on cloud instance (needs actual cloud infra)
+- [ ] Terraform apply on AWS (needs AWS credentials)
 
 ### Key Decisions
 
-- Base image: `nvidia/cuda:12.x-runtime-ubuntu22.04` + miniforge
+- Base image: `condaforge/miniforge3` (app doesn't need GPU — Ollama handles inference)
+- Using official `ollama/ollama` image instead of custom Dockerfile.ollama
 - Separate containers for app and model serving
-- Use `bio_env.yml` (full) or `fixed_env.yml` (lite 13GB, no R/CLI) based on instance size
+- Two build targets: `minimal` (environment.yml) or `full` (fixed_env.yml with bio tools)
 
 ## Phase 2: Backend API + Job Queue (2-3 weeks)
 
