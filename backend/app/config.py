@@ -24,8 +24,18 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:7860"]
 
+    # Celery / Redis
+    redis_url: str = "redis://redis:6379/0"
+    celery_task_timeout: int = 600
+    workspace_base_path: str = "/data/workspaces"
+
     # Auth (Phase 3)
     auth_enabled: bool = False
+
+    @property
+    def database_url_sync(self) -> str:
+        """Sync DB URL for Celery workers (psycopg2 instead of asyncpg)."""
+        return self.database_url.replace("+asyncpg", "+psycopg2")
 
     model_config = SettingsConfigDict(
         env_file=".env",

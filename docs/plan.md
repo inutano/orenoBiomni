@@ -87,33 +87,42 @@
 - Separate containers for app and model serving
 - Two build targets: `minimal` (environment.yml) or `full` (fixed_env.yml with bio tools)
 
-## Phase 2: Backend API + Job Queue (2-3 weeks)
+## Phase 2: Backend API + Job Queue — COMPLETE
 
-### FastAPI Backend
+### Phase 2a: FastAPI Backend — COMPLETE
 
-- [ ] Wrap A1 agent as API endpoints (`/api/v1/chat`, `/api/v1/sessions`)
-- [ ] Session CRUD (create, list, load, delete) backed by PostgreSQL
-- [ ] User management (OAuth tokens, preferences)
-- [ ] Job submission and status API (`/api/v1/jobs`)
-- [ ] File upload/download API (`/api/v1/files`)
+- [x] Wrap A1 agent as API endpoints (`/api/v1/chat`, `/api/v1/sessions`)
+- [x] Session CRUD (create, list, load, delete) backed by PostgreSQL
+- [x] SSE streaming for agent chat responses
+- [x] Alembic migrations auto-run on startup
+- [ ] User management (OAuth tokens, preferences) — deferred to Phase 3
+- [ ] File upload/download API (`/api/v1/files`) — deferred to Phase 3
 
-### Workflow Engine
+### Phase 2b: Celery + Redis Job Queue — COMPLETE
 
-- [ ] **Celery + Redis** for single-step tool execution
-  - Worker pools: Python worker, R worker, CLI worker
-  - Each runs in Docker container with resource limits (CPU, memory, timeout)
-  - Output/artifact capture to S3/MinIO
+- [x] **Celery + Redis** for single-step tool execution
+  - Single worker container with Python/R/bash capability
+  - Worker runs in Docker container with resource limits (4 CPU, 8GB memory)
+  - Monkey-patched `run_with_timeout` dispatches to Celery transparently
+  - Per-session workspace volumes for artifact capture
+- [x] Job management API (`/api/v1/jobs`) — list, get, cancel
+- [x] Job tracking in PostgreSQL (status, code, result, artifacts, timing, worker_id)
+- [x] Redis pub/sub for job status notifications
+- [x] Graceful fallback: runs in-process if Redis is unavailable
+
+### Key Decisions (Phase 2b)
+
+- Monkey-patch approach: no upstream Biomni changes needed
+- `contextvars.ContextVar` propagates session_id to patched execution functions
+- Python state does NOT persist between `<execute>` calls (each is a separate Celery task) — safer isolation
+- Sync `psycopg2` for Celery workers (Celery is sync, cannot use asyncpg)
+
+### Remaining (Phase 2c — future)
+
 - [ ] **Temporal** for multi-step pipelines
   - Define pipeline templates (e.g., scRNA-seq: load -> QC -> normalize -> cluster -> annotate)
   - Allow agent to compose pipelines dynamically
   - Durable execution with retry, resume, and visibility
-
-### Execution Sandboxing
-
-- [ ] Replace in-process subprocess with container-based execution
-- [ ] Resource limits per job (CPU cores, memory, GPU, timeout)
-- [ ] Persistent workspace per session (mounted volume)
-- [ ] Output artifact storage (plots, tables, files)
 
 ## Phase 3: UI Enhancement (2-3 weeks)
 

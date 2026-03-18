@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import health, sessions
+from .routers import health, jobs, sessions
 from .services import agent_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -41,3 +41,4 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+app.include_router(jobs.router, prefix="/api/v1", tags=["jobs"])

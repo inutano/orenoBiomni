@@ -1,9 +1,12 @@
 import asyncio
+import contextvars
 import logging
 import re
 import threading
 import uuid
 from collections.abc import AsyncGenerator
+
+from .monkey_patch import current_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +15,7 @@ _agent = None
 _agent_ready = False
 _agent_lock = asyncio.Lock()
 _session_locks: dict[uuid.UUID, asyncio.Lock] = {}
+_celery_patched = False
 
 
 def _get_session_lock(session_id: uuid.UUID) -> asyncio.Lock:
@@ -22,7 +26,7 @@ def _get_session_lock(session_id: uuid.UUID) -> asyncio.Lock:
 
 async def init_agent(settings) -> None:
     """Initialize the A1 agent. Called once during app startup."""
-    global _agent, _agent_ready
+    global _agent, _agent_ready, _celery_patched
 
     import os
     os.environ["OLLAMA_HOST"] = settings.ollama_base_url
@@ -46,9 +50,27 @@ async def init_agent(settings) -> None:
     _agent_ready = True
     logger.info("A1 agent ready.")
 
+    # Apply Celery monkey-patch if Redis is available
+    if settings.redis_url and not _celery_patched:
+        try:
+            import redis
+            r = redis.from_url(settings.redis_url, socket_connect_timeout=3)
+            r.ping()
+            r.close()
+
+            from .monkey_patch import patch_execution
+            patch_execution()
+            _celery_patched = True
+        except Exception:
+            logger.warning("Redis not available — code execution will run in-process (no Celery)")
+
 
 def is_agent_ready() -> bool:
     return _agent_ready
+
+
+def is_celery_active() -> bool:
+    return _celery_patched
 
 
 def get_agent():
@@ -61,7 +83,9 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
     """Stream agent responses as structured events.
 
     Runs the synchronous LangGraph generator in a background thread,
-    piping events through an asyncio.Queue.
+    piping events through an asyncio.Queue. Sets the session context
+    variable so monkey-patched execution functions know which session
+    to associate jobs with.
     """
     agent = get_agent()
     lock = _get_session_lock(session_id)
@@ -73,6 +97,9 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
     async with lock:
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
+
+        # Set session context for the monkey-patched execution functions
+        current_session_id.set(session_id)
 
         def _run_stream():
             try:
@@ -90,7 +117,9 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
                 loop.call_soon_threadsafe(queue.put_nowait, {"event": "error", "data": {"error": str(e)}})
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        thread = threading.Thread(target=_run_stream, daemon=True)
+        # Copy context so contextvars propagate to the background thread
+        ctx = contextvars.copy_context()
+        thread = threading.Thread(target=ctx.run, args=(_run_stream,), daemon=True)
         thread.start()
 
         while True:

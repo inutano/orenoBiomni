@@ -20,6 +20,8 @@ class Job(Base):
     result: Mapped[str | None] = mapped_column(Text)
     artifacts: Mapped[dict | None] = mapped_column(JSONB)
     error: Mapped[str | None] = mapped_column(Text)
+    celery_task_id: Mapped[str | None] = mapped_column(String(255))
+    worker_id: Mapped[str | None] = mapped_column(String(255))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

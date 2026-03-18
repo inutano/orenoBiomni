@@ -16,6 +16,9 @@ dependencies = [
     "pydantic-settings>=2.7",
     "sse-starlette>=2.2",
     "python-dotenv>=1.0",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "psycopg2-binary>=2.9",
 ]
 
 [project.optional-dependencies]

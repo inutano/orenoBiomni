@@ -37,17 +37,47 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - BIOMNI_DATA_PATH=./data
       - BIOMNI_TIMEOUT_SECONDS=${BIOMNI_TIMEOUT_SECONDS:-600}
+      - REDIS_URL=redis://redis:6379/0
+      - WORKSPACE_BASE_PATH=/data/workspaces
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - BIOMNI_CUSTOM_BASE_URL=${BIOMNI_CUSTOM_BASE_URL:-}
       - BIOMNI_CUSTOM_API_KEY=${BIOMNI_CUSTOM_API_KEY:-}
     volumes:
       - biomni-data:/app/Biomni/data
+      - workspaces:/data/workspaces
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery worker (code execution)
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-biomni}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/orenoiomni
+      - REDIS_URL=redis://redis:6379/0
+      - WORKSPACE_BASE_PATH=/data/workspaces
+      - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-2}
+    volumes:
+      - biomni-data:/app/Biomni/data
+      - workspaces:/data/workspaces
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
     restart: unless-stopped
 
   # Ollama model server (GPU required)
@@ -97,22 +127,23 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Redis (for Phase 2b: job queue)
-  # redis:
-  #   image: redis:7-alpine
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis-data:/data
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-  #   restart: unless-stopped
+  # Redis (Celery broker + result backend)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
   biomni-data:
   ollama-models:
   postgres-data:
-  # redis-data:
+  redis-data:
+  workspaces:

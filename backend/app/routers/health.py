@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..database import get_db
 from ..schemas.health import HealthResponse
 from ..services import agent_manager
@@ -17,9 +18,23 @@ async def health(db: AsyncSession = Depends(get_db)):
     except Exception:
         db_status = "error"
 
+    redis_status = "not_configured"
+    if settings.redis_url:
+        try:
+            import redis
+
+            r = redis.from_url(settings.redis_url, socket_connect_timeout=2)
+            r.ping()
+            r.close()
+            redis_status = "connected"
+        except Exception:
+            redis_status = "error"
+
     return HealthResponse(
         status="ok",
         agent_ready=agent_manager.is_agent_ready(),
         database=db_status,
+        redis=redis_status,
+        celery_active=agent_manager.is_celery_active(),
         version="0.1.0",
     )

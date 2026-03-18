@@ -1,12 +1,12 @@
-# orenoBiomni Backend (FastAPI)
+# orenoBiomni Celery Worker (code execution)
 #
 # Build:
-#   docker build -t orenoiomni-backend -f docker/Dockerfile.backend .
+#   docker build -t orenoiomni-worker -f docker/Dockerfile.worker .
 
 FROM condaforge/miniforge3:latest AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl build-essential \
+    git curl build-essential r-base \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -17,34 +17,27 @@ RUN conda env create -f /tmp/environment.yml -n biomni_e1 \
     && conda clean -afy \
     && rm /tmp/environment.yml
 
-# Install backend dependencies
+# Install worker dependencies
 SHELL ["conda", "run", "-n", "biomni_e1", "/bin/bash", "-c"]
 RUN pip install -q \
-    "fastapi>=0.115" \
-    "uvicorn[standard]>=0.34" \
-    "sqlalchemy[asyncio]>=2.0" \
-    "asyncpg>=0.30" \
-    "alembic>=1.14" \
-    "pydantic-settings>=2.7" \
-    "sse-starlette>=2.2" \
     "celery[redis]>=5.4" \
     "redis>=5.0" \
-    "psycopg2-binary>=2.9"
+    "psycopg2-binary>=2.9" \
+    "sqlalchemy>=2.0" \
+    "pydantic-settings>=2.7"
 
-# Copy and install Biomni
+# Copy and install Biomni (workers need execution functions)
 COPY Biomni /app/Biomni
 COPY patches /app/patches
 WORKDIR /app/Biomni
 RUN git apply /app/patches/biomni-ollama-compat.patch 2>/dev/null || true
 RUN pip install -e . -q
 
-# Copy backend
+# Copy backend (workers import task definitions from backend.app)
 COPY backend /app/backend
 WORKDIR /app
 
-COPY docker/entrypoint-backend.sh /app/entrypoint-backend.sh
-RUN chmod +x /app/entrypoint-backend.sh
+COPY docker/entrypoint-worker.sh /app/entrypoint-worker.sh
+RUN chmod +x /app/entrypoint-worker.sh
 
-EXPOSE 8000
-
-ENTRYPOINT ["/app/entrypoint-backend.sh"]
+ENTRYPOINT ["/app/entrypoint-worker.sh"]
