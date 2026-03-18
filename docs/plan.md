@@ -8,6 +8,7 @@
 - **Auth**: OAuth via Google and GitHub accounts
 - **Network**: Restricted to university network (VPN/IP allowlist)
 - **Workflows**: Both single-step tool calls and multi-step pipelines
+- **Job API**: GA4GH Workflow Execution Service (WES) v1.1.0 compatible
 
 ## Architecture
 
@@ -24,7 +25,7 @@
         +-----v-----+ +---v----+ +-----v-----+
         |  Next.js   | | Gradio | |  FastAPI   |
         |  Shell UI  | | Chat   | |  Backend   |
-        | (sessions, | | (agent | | (jobs API, |
+        | (sessions, | | (agent | | (WES API,  |
         |  tools,    | |  chat) | |  auth,     |
         |  dashboard)| |        | |  storage)  |
         +------------+ +---+----+ +-----+------+
@@ -34,8 +35,8 @@
                       +-----------+----------+
                                   |
                       +-----------v----------+
-                      |   Temporal / Celery   |
-                      |   Workflow Engine     |
+                      |   Celery + Redis      |
+                      |   (WES execution)     |
                       +----+-----------+-----+
                            |           |
                     +------v--+  +-----v----+
@@ -95,8 +96,6 @@
 - [x] Session CRUD (create, list, load, delete) backed by PostgreSQL
 - [x] SSE streaming for agent chat responses
 - [x] Alembic migrations auto-run on startup
-- [ ] User management (OAuth tokens, preferences) — deferred to Phase 3
-- [ ] File upload/download API (`/api/v1/files`) — deferred to Phase 3
 
 ### Phase 2b: Celery + Redis Job Queue — COMPLETE
 
@@ -105,17 +104,24 @@
   - Worker runs in Docker container with resource limits (4 CPU, 8GB memory)
   - Monkey-patched `run_with_timeout` dispatches to Celery transparently
   - Per-session workspace volumes for artifact capture
-- [x] Job management API (`/api/v1/jobs`) — list, get, cancel
-- [x] Job tracking in PostgreSQL (status, code, result, artifacts, timing, worker_id)
+- [x] **GA4GH WES v1.1.0 compatible API** at `/ga4gh/wes/v1/`
+  - `GET /service-info` — capabilities, state counts, engine info
+  - `GET/POST /runs` — list and submit runs with token-based pagination
+  - `GET /runs/{id}` — full RunLog with stdout/stderr/exit_code
+  - `GET /runs/{id}/status` — lightweight state-only endpoint
+  - `GET /runs/{id}/tasks` — task listing per run
+  - `POST /runs/{id}/cancel` — cancel with Celery revocation
+- [x] WES State enum: QUEUED → RUNNING → COMPLETE / EXECUTOR_ERROR / CANCELED
 - [x] Redis pub/sub for job status notifications
 - [x] Graceful fallback: runs in-process if Redis is unavailable
 
-### Key Decisions (Phase 2b)
+### Key Decisions (Phase 2)
 
 - Monkey-patch approach: no upstream Biomni changes needed
 - `contextvars.ContextVar` propagates session_id to patched execution functions
 - Python state does NOT persist between `<execute>` calls (each is a separate Celery task) — safer isolation
 - Sync `psycopg2` for Celery workers (Celery is sync, cannot use asyncpg)
+- WES API alongside internal session/chat API — agent-driven runs and direct WES submissions both produce WES-compatible records
 
 ### Remaining (Phase 2c — future)
 
@@ -124,29 +130,31 @@
   - Allow agent to compose pipelines dynamically
   - Durable execution with retry, resume, and visibility
 
-## Phase 3: UI Enhancement (2-3 weeks)
+## Phase 3: UI Enhancement
 
-### Next.js Shell (wraps Gradio via iframe or API)
+### Phase 3a: Next.js Shell
 
+- [ ] **Project setup**: Next.js 15 + Tailwind CSS + shadcn/ui
 - [ ] **Layout**: Sidebar + main content area
 - [ ] **Session panel**: List/create/delete sessions, conversation history
-- [ ] **Tool browser**: Searchable list of 24 tool modules + data lake datasets
-- [ ] **Job dashboard**: Running/queued/completed jobs with logs, output, artifacts
-- [ ] **File manager**: Upload datasets, view generated plots/tables, download results
+- [ ] **Chat interface**: SSE-backed chat with the agent (replaces Gradio iframe)
+- [ ] **Run dashboard**: WES runs — queued/running/completed with logs, stdout/stderr, artifacts
 - [ ] **Settings**: Model selector, temperature, tool retriever toggle
 
-### Gradio Enhancements (within existing UI)
-
-- [ ] Better code display in executor panel (syntax highlighting)
-- [ ] Progress indicators for long-running tools
-- [ ] Inline plot gallery (not just chat messages)
-- [ ] One-click PDF report export
-
-### Auth Integration
+### Phase 3b: Auth Integration
 
 - [ ] OAuth2 via NextAuth.js (Google + GitHub providers)
 - [ ] Session tokens passed to FastAPI backend
 - [ ] Per-user conversation isolation
+- [ ] User management API in backend
+
+### Phase 3c: Enhanced Features
+
+- [ ] **Tool browser**: Searchable list of Biomni tool modules + data lake datasets
+- [ ] **File manager**: Upload datasets, view generated plots/tables, download results
+- [ ] File upload/download API (`/api/v1/files`)
+- [ ] Inline plot gallery (rendered from workspace artifacts)
+- [ ] One-click PDF report export
 
 ## Phase 4: Production Hardening (ongoing)
 
@@ -163,13 +171,14 @@
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend shell | Next.js + Tailwind CSS |
-| Agent chat | Gradio (embedded) |
+| Frontend shell | Next.js 15 + Tailwind CSS + shadcn/ui |
+| Agent chat | SSE streaming (replaces Gradio iframe) |
 | Backend API | FastAPI + Pydantic |
+| Job execution | GA4GH WES v1.1.0 API + Celery |
 | Auth | NextAuth.js (Google/GitHub OAuth) |
 | Database | PostgreSQL |
 | Cache/Queue | Redis |
-| Workflow | Celery (single-step) + Temporal (multi-step pipelines) |
+| Workflow | Celery (single-step) + Temporal (multi-step pipelines, future) |
 | Object storage | S3 (AWS) / MinIO (self-hosted) |
 | Model serving | Ollama or vLLM |
 | Container runtime | Docker + docker-compose (dev), ECS/K8s (prod) |
