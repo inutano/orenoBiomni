@@ -1,10 +1,10 @@
 """Synchronous DB helpers for Celery workers (cannot use asyncpg)."""
 
+import json
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, text, update
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, text
 
 from ..config import settings
 
@@ -20,23 +20,27 @@ def get_engine():
 
 def update_job_status(
     job_id: uuid.UUID,
-    status: str,
+    state: str,
     *,
-    result: str | None = None,
-    error: str | None = None,
+    stdout: str | None = None,
+    stderr: str | None = None,
+    exit_code: int | None = None,
     artifacts: dict | None = None,
     worker_id: str | None = None,
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
 ) -> None:
     engine = get_engine()
-    values: dict = {"status": status}
-    if result is not None:
-        values["result"] = result
-    if error is not None:
-        values["error"] = error
+    values: dict = {"state": state}
+    if stdout is not None:
+        values["stdout"] = stdout
+    if stderr is not None:
+        values["stderr"] = stderr
+    if exit_code is not None:
+        values["exit_code"] = exit_code
     if artifacts is not None:
-        values["artifacts"] = artifacts
+        # JSONB needs to be serialized for raw SQL
+        values["artifacts"] = json.dumps(artifacts)
     if worker_id is not None:
         values["worker_id"] = worker_id
     if started_at is not None:
@@ -44,12 +48,16 @@ def update_job_status(
     if completed_at is not None:
         values["completed_at"] = completed_at
 
+    # Build SET clause with proper casting for JSONB
+    set_parts = []
+    for k in values:
+        if k == "artifacts":
+            set_parts.append(f"{k} = CAST(:{k} AS jsonb)")
+        else:
+            set_parts.append(f"{k} = :{k}")
+
     with engine.begin() as conn:
         conn.execute(
-            text(
-                "UPDATE jobs SET "
-                + ", ".join(f"{k} = :{k}" for k in values)
-                + " WHERE id = :job_id"
-            ),
+            text("UPDATE jobs SET " + ", ".join(set_parts) + " WHERE id = :job_id"),
             {**values, "job_id": str(job_id)},
         )

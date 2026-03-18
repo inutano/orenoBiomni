@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 _redis_client = None
 
+# WES State constants (avoid importing models in worker)
+RUNNING = "RUNNING"
+COMPLETE = "COMPLETE"
+EXECUTOR_ERROR = "EXECUTOR_ERROR"
+SYSTEM_ERROR = "SYSTEM_ERROR"
+
 
 def _get_redis():
     global _redis_client
@@ -24,13 +30,13 @@ def _get_redis():
     return _redis_client
 
 
-def _publish_status(job_id: str, status: str, detail: str = ""):
+def _publish_status(job_id: str, state: str, detail: str = ""):
     """Publish job status to Redis pub/sub for SSE streaming."""
     import json
 
     _get_redis().publish(
         f"job:{job_id}:status",
-        json.dumps({"status": status, "detail": detail}),
+        json.dumps({"state": state, "detail": detail}),
     )
 
 
@@ -60,8 +66,8 @@ def _scan_new_files(workspace: str, since: float) -> list[dict]:
 def execute_python(self, job_id: str, session_id: str, code: str, timeout: int):
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
-    update_job_status(jid, "running", worker_id=self.request.hostname, started_at=now)
-    _publish_status(job_id, "running")
+    update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
+    _publish_status(job_id, RUNNING)
 
     workspace = _ensure_workspace(session_id)
     scan_start = now.timestamp()
@@ -79,18 +85,23 @@ def execute_python(self, job_id: str, session_id: str, code: str, timeout: int):
         artifacts = _scan_new_files(workspace, scan_start)
         update_job_status(
             jid,
-            "completed",
-            result=result,
+            COMPLETE,
+            stdout=result,
+            exit_code=0,
             artifacts={"files": artifacts} if artifacts else None,
             completed_at=datetime.now(timezone.utc),
         )
-        _publish_status(job_id, "completed")
+        _publish_status(job_id, COMPLETE)
         return result
 
     except Exception as e:
         logger.exception("Python execution failed for job %s", job_id)
-        update_job_status(jid, "failed", error=str(e), completed_at=datetime.now(timezone.utc))
-        _publish_status(job_id, "failed", str(e))
+        update_job_status(
+            jid, EXECUTOR_ERROR,
+            stderr=str(e), exit_code=1,
+            completed_at=datetime.now(timezone.utc),
+        )
+        _publish_status(job_id, EXECUTOR_ERROR, str(e))
         return f"Error in execution: {e}"
 
 
@@ -98,8 +109,8 @@ def execute_python(self, job_id: str, session_id: str, code: str, timeout: int):
 def execute_r(self, job_id: str, session_id: str, code: str, timeout: int):
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
-    update_job_status(jid, "running", worker_id=self.request.hostname, started_at=now)
-    _publish_status(job_id, "running")
+    update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
+    _publish_status(job_id, RUNNING)
 
     workspace = _ensure_workspace(session_id)
     scan_start = now.timestamp()
@@ -117,18 +128,23 @@ def execute_r(self, job_id: str, session_id: str, code: str, timeout: int):
         artifacts = _scan_new_files(workspace, scan_start)
         update_job_status(
             jid,
-            "completed",
-            result=result,
+            COMPLETE,
+            stdout=result,
+            exit_code=0,
             artifacts={"files": artifacts} if artifacts else None,
             completed_at=datetime.now(timezone.utc),
         )
-        _publish_status(job_id, "completed")
+        _publish_status(job_id, COMPLETE)
         return result
 
     except Exception as e:
         logger.exception("R execution failed for job %s", job_id)
-        update_job_status(jid, "failed", error=str(e), completed_at=datetime.now(timezone.utc))
-        _publish_status(job_id, "failed", str(e))
+        update_job_status(
+            jid, EXECUTOR_ERROR,
+            stderr=str(e), exit_code=1,
+            completed_at=datetime.now(timezone.utc),
+        )
+        _publish_status(job_id, EXECUTOR_ERROR, str(e))
         return f"Error in execution: {e}"
 
 
@@ -136,8 +152,8 @@ def execute_r(self, job_id: str, session_id: str, code: str, timeout: int):
 def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int):
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
-    update_job_status(jid, "running", worker_id=self.request.hostname, started_at=now)
-    _publish_status(job_id, "running")
+    update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
+    _publish_status(job_id, RUNNING)
 
     workspace = _ensure_workspace(session_id)
     scan_start = now.timestamp()
@@ -155,16 +171,21 @@ def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int):
         artifacts = _scan_new_files(workspace, scan_start)
         update_job_status(
             jid,
-            "completed",
-            result=result,
+            COMPLETE,
+            stdout=result,
+            exit_code=0,
             artifacts={"files": artifacts} if artifacts else None,
             completed_at=datetime.now(timezone.utc),
         )
-        _publish_status(job_id, "completed")
+        _publish_status(job_id, COMPLETE)
         return result
 
     except Exception as e:
         logger.exception("Bash execution failed for job %s", job_id)
-        update_job_status(jid, "failed", error=str(e), completed_at=datetime.now(timezone.utc))
-        _publish_status(job_id, "failed", str(e))
+        update_job_status(
+            jid, EXECUTOR_ERROR,
+            stderr=str(e), exit_code=1,
+            completed_at=datetime.now(timezone.utc),
+        )
+        _publish_status(job_id, EXECUTOR_ERROR, str(e))
         return f"Error in execution: {e}"

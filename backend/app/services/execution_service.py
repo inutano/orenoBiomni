@@ -4,12 +4,11 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from celery.result import AsyncResult
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from ..models.job import Job
+from ..models.job import Job, RunState
 from ..tasks.execute import execute_bash, execute_python, execute_r
 
 logger = logging.getLogger(__name__)
@@ -37,14 +36,14 @@ def submit_job_sync(
     timeout = timeout or settings.celery_task_timeout
     job_id = uuid.uuid4()
 
-    # Create job record
+    # Create job record with WES state
     engine = get_engine()
     with engine.begin() as conn:
         conn.execute(
             Job.__table__.insert().values(
                 id=str(job_id),
                 session_id=str(session_id),
-                status="pending",
+                state=RunState.QUEUED,
                 job_type=job_type,
                 code=code,
                 created_at=datetime.now(timezone.utc),
@@ -83,6 +82,34 @@ def submit_job_sync(
     return job_id, result
 
 
+async def dispatch_job_async(job: Job) -> None:
+    """Dispatch an existing Job record to Celery (called from WES API)."""
+    task_fn = _TASK_MAP.get(job.job_type)
+    if not task_fn:
+        raise ValueError(f"Unknown job type: {job.job_type}")
+
+    timeout = settings.celery_task_timeout
+    async_result = task_fn.apply_async(
+        args=[str(job.id), str(job.session_id), job.code, timeout],
+        task_id=str(job.id),
+        soft_time_limit=timeout,
+        time_limit=timeout + 30,
+    )
+
+    # Update celery_task_id (fire-and-forget, don't block)
+    from ..tasks.db_sync import get_engine
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            Job.__table__.update()
+            .where(Job.__table__.c.id == str(job.id))
+            .values(celery_task_id=async_result.id)
+        )
+
+    logger.info("Dispatched %s run %s to Celery", job.job_type, job.id)
+
+
 async def list_jobs(
     db: AsyncSession, session_id: uuid.UUID, limit: int = 20, offset: int = 0
 ) -> list[Job]:
@@ -104,7 +131,7 @@ async def get_job(db: AsyncSession, job_id: uuid.UUID) -> Job | None:
 async def cancel_job(db: AsyncSession, job_id: uuid.UUID) -> Job | None:
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
-    if not job or job.status in ("completed", "failed", "cancelled"):
+    if not job or job.state in (RunState.COMPLETE, RunState.EXECUTOR_ERROR, RunState.CANCELED):
         return job
 
     # Revoke the Celery task
@@ -113,7 +140,7 @@ async def cancel_job(db: AsyncSession, job_id: uuid.UUID) -> Job | None:
 
         celery.control.revoke(job.celery_task_id, terminate=True, signal="SIGTERM")
 
-    job.status = "cancelled"
+    job.state = RunState.CANCELED
     job.completed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)
