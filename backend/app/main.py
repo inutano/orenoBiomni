@@ -72,8 +72,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._hits: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
-        # Skip health checks and static assets
-        if request.url.path in ("/api/v1/health",):
+        # Skip high-frequency internal/polling paths
+        path = request.url.path
+        if path in ("/api/v1/health", "/metrics") or path == "/api/v1/sessions" and request.method == "GET":
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"
@@ -125,7 +126,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-app.add_middleware(RateLimitMiddleware, requests_per_minute=120)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=300)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
