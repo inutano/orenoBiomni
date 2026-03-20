@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { MessageSquare, ListTodo, Settings, Plus, Trash2 } from "lucide-react";
+import { MessageSquare, ListTodo, GitBranch, Wrench, Settings, Plus, Trash2 } from "lucide-react";
 import { NavLink } from "./nav-link";
 import { useSessions } from "@/hooks/use-sessions";
 import { truncateId, relativeTime, cn } from "@/lib/utils";
@@ -86,6 +86,12 @@ export function Sidebar() {
       <nav className="p-2 border-t border-[var(--border)] space-y-1">
         <NavLink href="/runs" icon={<ListTodo size={16} />}>
           Runs
+        </NavLink>
+        <NavLink href="/pipelines" icon={<GitBranch size={16} />}>
+          Pipelines
+        </NavLink>
+        <NavLink href="/tools" icon={<Wrench size={16} />}>
+          Tools
         </NavLink>
         <NavLink href="/settings" icon={<Settings size={16} />}>
           Settings

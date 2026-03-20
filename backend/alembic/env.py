@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.config import settings
 from app.database import Base
-from app.models import Job, Message, Session, User  # noqa: F401 — ensure models are registered
+from app.models import Job, Message, Pipeline, Session, User  # noqa: F401 — ensure models are registered
 
 config = context.config
 

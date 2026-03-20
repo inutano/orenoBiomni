@@ -1,49 +1,56 @@
+# orenoBiomni Terraform Variables
+#
+# Required: key_name, allowed_cidr, admin_cidr
+# Optional: everything else has sensible defaults
+
 variable "region" {
-  description = "AWS region"
+  description = "AWS region to deploy into"
   type        = string
   default     = "us-west-2"
 }
 
-variable "az_suffix" {
-  description = "Availability zone suffix"
-  type        = string
-  default     = "a"
-}
-
-variable "vpc_id" {
-  description = "VPC ID to deploy into"
-  type        = string
-}
-
-variable "subnet_id" {
-  description = "Subnet ID to deploy into"
-  type        = string
-}
-
 variable "instance_type" {
-  description = "EC2 instance type (GPU required)"
+  description = "EC2 instance type. Use g5.xlarge (1x A10G 24GB) or g5.2xlarge for more CPU/RAM"
   type        = string
-  default     = "g5.2xlarge" # 1x A10G 24GB, 8 vCPU, 32GB RAM
+  default     = "g5.xlarge"
 }
 
 variable "ami_id" {
-  description = "AMI ID (Ubuntu 22.04 with NVIDIA drivers)"
+  description = "AMI ID. Leave empty to auto-select latest Ubuntu 22.04 Deep Learning AMI"
   type        = string
-  default     = "ami-0735c191cf914754d" # Ubuntu 22.04 LTS us-west-2 (update as needed)
+  default     = ""
 }
 
-variable "ssh_key_name" {
-  description = "SSH key pair name for EC2 access"
+variable "key_name" {
+  description = "Name of the SSH key pair for EC2 access"
   type        = string
 }
 
 variable "allowed_cidr" {
-  description = "CIDR block allowed to access (e.g., university network)"
+  description = "CIDR block allowed to access HTTP/HTTPS (e.g., university IP range). Restrict this in production"
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
+variable "admin_cidr" {
+  description = "CIDR block allowed SSH access (e.g., your IP/32)"
   type        = string
 }
 
-variable "data_volume_size" {
-  description = "Size of persistent data EBS volume in GB"
+variable "volume_size" {
+  description = "Size of the persistent EBS data volume in GB"
   type        = number
-  default     = 200 # Ollama models (~40GB) + data lake (~11GB) + headroom
+  default     = 100
+}
+
+variable "app_domain" {
+  description = "Optional domain name for the application (for SSL certificates)"
+  type        = string
+  default     = ""
+}
+
+variable "project_name" {
+  description = "Project name used for resource naming and tagging"
+  type        = string
+  default     = "orenoiomni"
 }

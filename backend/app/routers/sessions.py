@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from ..database import get_db
+from ..middleware.auth import get_current_user
+from ..models import User
 from ..schemas.session import ChatRequest, SessionCreate, SessionListItem, SessionRead
 from ..services import agent_manager, session_service
 from ..routers.metrics import inc_chat
@@ -13,21 +15,23 @@ from ..streaming.sse import format_sse
 router = APIRouter(prefix="/sessions")
 
 
-async def _get_user(db: AsyncSession):
-    """Placeholder: returns anonymous user until OAuth is implemented."""
-    return await session_service.get_or_create_default_user(db)
-
-
 @router.post("", response_model=SessionListItem, status_code=201)
-async def create_session(body: SessionCreate, db: AsyncSession = Depends(get_db)):
-    user = await _get_user(db)
+async def create_session(
+    body: SessionCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     session = await session_service.create_session(db, user.id, body.title)
     return session
 
 
 @router.get("", response_model=list[SessionListItem])
-async def list_sessions(limit: int = 20, offset: int = 0, db: AsyncSession = Depends(get_db)):
-    user = await _get_user(db)
+async def list_sessions(
+    limit: int = 20,
+    offset: int = 0,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     return await session_service.list_sessions(db, user.id, limit, offset)
 
 

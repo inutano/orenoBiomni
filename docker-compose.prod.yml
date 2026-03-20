@@ -2,19 +2,44 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # Changes from default:
-# - Removes host port bindings for Postgres and Redis (internal-only)
+# - Adds nginx reverse proxy (ports 80/443)
+# - Removes host port bindings for Postgres, Redis, backend, frontend (internal-only)
 # - Uses Docker secrets for sensitive credentials
 # - Adds logging driver configuration
 #
 # Setup:
-#   echo "your-db-password" | docker secret create postgres_password -
-#   echo "your-redis-password" | docker secret create redis_password -
-# Or for non-swarm (file-based secrets):
-#   mkdir -p ./secrets
+#   mkdir -p ./secrets ./ssl
 #   echo "your-db-password" > ./secrets/postgres_password
 #   echo "your-redis-password" > ./secrets/redis_password
+#   # Generate self-signed cert (or place real certs):
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#     -keyout ssl/server.key -out ssl/server.crt -subj "/CN=localhost"
 
 services:
+  # Nginx reverse proxy — the only service exposing host ports
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
   postgres:
     ports: !reset []
     environment:
@@ -28,6 +53,7 @@ services:
       - redis_password
 
   backend:
+    ports: !reset []
     environment:
       - LOG_FORMAT=json
     secrets:
@@ -48,6 +74,7 @@ services:
         max-file: "5"
 
   frontend:
+    ports: !reset []
     logging:
       driver: json-file
       options:

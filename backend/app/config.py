@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     # Auth (Phase 3)
     auth_enabled: bool = False
+    auth_secret: str = "change-me-in-production"  # JWT signing secret
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    auth_redirect_url: str = "http://localhost:3000"
 
     @model_validator(mode="after")
     def validate_source_and_keys(self):

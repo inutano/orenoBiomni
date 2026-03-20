@@ -1,12 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { useHealth } from "@/hooks/use-health";
+import { useAuth } from "@/hooks/use-auth";
 import { useSessions } from "@/hooks/use-sessions";
 import { truncateId } from "@/lib/utils";
 
 export function Header() {
   const { health } = useHealth();
+  const { user, isAuthenticated, providers, logout } = useAuth();
   const pathname = usePathname();
   const { sessions } = useSessions();
 
@@ -19,6 +22,10 @@ export function Header() {
     pageTitle = "Workflow Runs";
   } else if (pathname.startsWith("/runs/")) {
     pageTitle = "Run Details";
+  } else if (pathname === "/pipelines") {
+    pageTitle = "Pipelines";
+  } else if (pathname === "/tools") {
+    pageTitle = "Tools & Datasets";
   } else if (pathname === "/settings") {
     pageTitle = "Settings";
   }
@@ -26,11 +33,39 @@ export function Header() {
   return (
     <header className="h-12 border-b border-[var(--border)] flex items-center justify-between px-4">
       <h2 className="text-sm font-medium truncate">{pageTitle}</h2>
-      <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-        <span
-          className={`w-2 h-2 rounded-full ${health ? "bg-green-500" : "bg-red-500"}`}
-        />
-        {health ? "Backend connected" : "Backend offline"}
+      <div className="flex items-center gap-3">
+        {isAuthenticated && providers?.auth_enabled && user && (
+          <div className="flex items-center gap-2 text-xs">
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.display_name || user.email}
+                className="w-6 h-6 rounded-full"
+              />
+            ) : (
+              <span className="w-6 h-6 rounded-full bg-[var(--accent)] flex items-center justify-center text-[var(--accent-foreground)] text-xs font-medium">
+                {(user.display_name || user.email).charAt(0).toUpperCase()}
+              </span>
+            )}
+            <span className="text-[var(--foreground)] max-w-[120px] truncate">
+              {user.display_name || user.email}
+            </span>
+            <button
+              onClick={logout}
+              className="p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
+        <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+          <span
+            className={`w-2 h-2 rounded-full ${health ? "bg-green-500" : "bg-red-500"}`}
+          />
+          {health ? "Backend connected" : "Backend offline"}
+        </div>
       </div>
     </header>
   );

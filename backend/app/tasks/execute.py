@@ -62,8 +62,19 @@ def _scan_new_files(workspace: str, since: float) -> list[dict]:
     return artifacts
 
 
+def _notify_pipeline(pipeline_id: str | None, job_id: str) -> None:
+    """If this job belongs to a pipeline, dispatch the callback to advance it."""
+    if not pipeline_id:
+        return
+    try:
+        from .pipeline_callback import pipeline_step_done
+        pipeline_step_done.delay(pipeline_id, job_id)
+    except Exception:
+        logger.exception("Failed to dispatch pipeline callback for pipeline=%s job=%s", pipeline_id, job_id)
+
+
 @celery.task(name="backend.app.tasks.execute.execute_python", bind=True)
-def execute_python(self, job_id: str, session_id: str, code: str, timeout: int):
+def execute_python(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
     update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
@@ -92,6 +103,7 @@ def execute_python(self, job_id: str, session_id: str, code: str, timeout: int):
             completed_at=datetime.now(timezone.utc),
         )
         _publish_status(job_id, COMPLETE)
+        _notify_pipeline(pipeline_id, job_id)
         return result
 
     except Exception as e:
@@ -102,11 +114,12 @@ def execute_python(self, job_id: str, session_id: str, code: str, timeout: int):
             completed_at=datetime.now(timezone.utc),
         )
         _publish_status(job_id, EXECUTOR_ERROR, str(e))
+        _notify_pipeline(pipeline_id, job_id)
         return f"Error in execution: {e}"
 
 
 @celery.task(name="backend.app.tasks.execute.execute_r", bind=True)
-def execute_r(self, job_id: str, session_id: str, code: str, timeout: int):
+def execute_r(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
     update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
@@ -135,6 +148,7 @@ def execute_r(self, job_id: str, session_id: str, code: str, timeout: int):
             completed_at=datetime.now(timezone.utc),
         )
         _publish_status(job_id, COMPLETE)
+        _notify_pipeline(pipeline_id, job_id)
         return result
 
     except Exception as e:
@@ -145,11 +159,12 @@ def execute_r(self, job_id: str, session_id: str, code: str, timeout: int):
             completed_at=datetime.now(timezone.utc),
         )
         _publish_status(job_id, EXECUTOR_ERROR, str(e))
+        _notify_pipeline(pipeline_id, job_id)
         return f"Error in execution: {e}"
 
 
 @celery.task(name="backend.app.tasks.execute.execute_bash", bind=True)
-def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int):
+def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
     update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
@@ -178,6 +193,7 @@ def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int):
             completed_at=datetime.now(timezone.utc),
         )
         _publish_status(job_id, COMPLETE)
+        _notify_pipeline(pipeline_id, job_id)
         return result
 
     except Exception as e:
@@ -188,4 +204,5 @@ def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int):
             completed_at=datetime.now(timezone.utc),
         )
         _publish_status(job_id, EXECUTOR_ERROR, str(e))
+        _notify_pipeline(pipeline_id, job_id)
         return f"Error in execution: {e}"

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings
-from .routers import health, metrics, sessions, system_info, wes
+from .routers import auth, files, health, metrics, pipelines, sessions, system_info, tools, wes
 from .services import agent_manager
 
 # --- Structured JSON logging ---
@@ -136,7 +136,11 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+app.include_router(files.router, prefix="/api/v1", tags=["files"])
+app.include_router(tools.router, prefix="/api/v1", tags=["tools"])
 app.include_router(system_info.router, prefix="/api/v1", tags=["system"])
+app.include_router(pipelines.router, prefix="/api/v1", tags=["pipelines"])
 app.include_router(wes.router, prefix="/ga4gh/wes/v1", tags=["WES"])
 app.include_router(metrics.router, tags=["metrics"])

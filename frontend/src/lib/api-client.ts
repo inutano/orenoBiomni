@@ -1,7 +1,9 @@
+import type { AuthProviders, AuthUser } from "@/types/auth";
 import type { SessionListItem, SessionRead } from "@/types/session";
 import type { RunListResponse, RunLog, ServiceInfo } from "@/types/wes";
 import type { HealthResponse } from "@/types/health";
 import type { SystemInfo } from "@/types/system-info";
+import type { FileListResponse, FileUploadResponse } from "@/types/files";
 
 class ApiError extends Error {
   constructor(
@@ -73,4 +75,107 @@ export function getHealth() {
 // System info
 export function getSystemInfo() {
   return apiFetch<SystemInfo>("/api/v1/system-info");
+}
+
+// Files
+export function listFiles(sessionId: string) {
+  return apiFetch<FileListResponse>(
+    `/api/v1/sessions/${sessionId}/files`,
+  );
+}
+
+export async function uploadFiles(
+  sessionId: string,
+  files: File[],
+): Promise<FileUploadResponse> {
+  const form = new FormData();
+  for (const f of files) {
+    form.append("files", f);
+  }
+  const res = await fetch(`/api/v1/sessions/${sessionId}/files`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text());
+  }
+  return res.json();
+}
+
+export function deleteFile(sessionId: string, path: string) {
+  return apiFetch<void>(
+    `/api/v1/sessions/${sessionId}/files/${path}`,
+    { method: "DELETE" },
+  );
+}
+
+export function getFileUrl(sessionId: string, path: string, preview = false) {
+  const base = `/api/v1/sessions/${sessionId}/files/${path}`;
+  return preview ? `${base}?preview=true` : base;
+}
+
+// Tools & Datasets
+import type { ToolListResponse, DatasetListResponse } from "@/types/tools";
+
+export function listTools(search?: string) {
+  const params = search ? `?search=${encodeURIComponent(search)}` : "";
+  return apiFetch<ToolListResponse>(`/api/v1/tools${params}`);
+}
+
+export function listToolsByDomain(domain: string) {
+  return apiFetch<ToolListResponse>(`/api/v1/tools/${encodeURIComponent(domain)}`);
+}
+
+export function listDatasets(search?: string) {
+  const params = search ? `?search=${encodeURIComponent(search)}` : "";
+  return apiFetch<DatasetListResponse>(`/api/v1/datasets${params}`);
+}
+
+// Auth
+export function getAuthProviders() {
+  return apiFetch<AuthProviders>("/api/v1/auth/providers");
+}
+
+export function getAuthMe() {
+  return apiFetch<AuthUser>("/api/v1/auth/me");
+}
+
+export function logout() {
+  return apiFetch<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" });
+}
+
+// Pipelines
+import type {
+  PipelineCreate,
+  PipelineListItem,
+  PipelineRead,
+  PipelineTemplate,
+} from "@/types/pipeline";
+
+export function listPipelines(sessionId?: string) {
+  const params = sessionId
+    ? `?session_id=${encodeURIComponent(sessionId)}`
+    : "";
+  return apiFetch<PipelineListItem[]>(`/api/v1/pipelines${params}`);
+}
+
+export function getPipeline(id: string) {
+  return apiFetch<PipelineRead>(`/api/v1/pipelines/${id}`);
+}
+
+export function createPipeline(data: PipelineCreate) {
+  return apiFetch<PipelineRead>("/api/v1/pipelines", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cancelPipeline(id: string) {
+  return apiFetch<PipelineRead>(`/api/v1/pipelines/${id}/cancel`, {
+    method: "POST",
+  });
+}
+
+export function getPipelineTemplates() {
+  return apiFetch<PipelineTemplate[]>("/api/v1/pipelines/templates");
 }
