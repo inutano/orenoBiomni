@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import health, sessions, wes
+from .routers import health, sessions, system_info, wes
 from .services import agent_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -43,4 +43,5 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
+app.include_router(system_info.router, prefix="/api/v1", tags=["system"])
 app.include_router(wes.router, prefix="/ga4gh/wes/v1", tags=["WES"])

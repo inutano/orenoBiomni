@@ -1,92 +1,175 @@
 "use client";
 
 import { useHealth } from "@/hooks/use-health";
-import { useSessions } from "@/hooks/use-sessions";
-import { getServiceInfo, getSession } from "@/lib/api-client";
+import { getServiceInfo, getSystemInfo } from "@/lib/api-client";
 import { useEffect, useState } from "react";
 import type { ServiceInfo } from "@/types/wes";
+import type { SystemInfo } from "@/types/system-info";
+
+function formatCtx(n: number): string {
+  if (n >= 1024) return `${Math.round(n / 1024)}K`;
+  return String(n);
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value == null) return null;
+  return (
+    <>
+      <dt className="text-[var(--muted-foreground)]">{label}</dt>
+      <dd>{value}</dd>
+    </>
+  );
+}
 
 export function SettingsForm() {
   const { health } = useHealth();
-  const { sessions } = useSessions();
+  const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
   const [serviceInfo, setServiceInfo] = useState<ServiceInfo | null>(null);
-  const [agentConfig, setAgentConfig] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    getServiceInfo()
-      .then(setServiceInfo)
-      .catch(() => {});
+    getSystemInfo().then(setSysInfo).catch(() => {});
+    getServiceInfo().then(setServiceInfo).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (sessions.length > 0) {
-      getSession(sessions[0].id)
-        .then((s) => setAgentConfig(s.agent_config))
-        .catch(() => {});
-    }
-  }, [sessions]);
-
-  const llmConfig = agentConfig?.llm_config as Record<string, unknown> | undefined;
-  const modelName = (llmConfig?.model as string) || null;
-  const modelSource = (llmConfig?.api_base as string) || (llmConfig?.base_url as string) || null;
+  const m = sysInfo?.model;
+  const o = sysInfo?.ollama;
+  const g = sysInfo?.gpu;
+  const w = sysInfo?.worker;
 
   return (
     <div className="space-y-8 max-w-2xl">
-      <section>
-        <h3 className="text-sm font-medium mb-3">System Status</h3>
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-          <dt className="text-[var(--muted-foreground)]">Backend</dt>
-          <dd className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${health ? "bg-green-500" : "bg-red-500"}`} />
-            {health ? "Connected" : "Offline"}
-          </dd>
-          {health && (
-            <>
-              <dt className="text-[var(--muted-foreground)]">Celery</dt>
-              <dd>{health.celery_active ? "Active" : "Inactive"}</dd>
-              <dt className="text-[var(--muted-foreground)]">Version</dt>
-              <dd>{health.version || "—"}</dd>
-            </>
-          )}
-        </dl>
-      </section>
-
-      {(modelName || modelSource) && (
+      {/* LLM Model */}
+      {m && (
         <section>
-          <h3 className="text-sm font-medium mb-3">Agent Configuration</h3>
-          <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            {modelName && (
-              <>
-                <dt className="text-[var(--muted-foreground)]">LLM Model</dt>
-                <dd>{modelName}</dd>
-              </>
-            )}
-            {modelSource && (
-              <>
-                <dt className="text-[var(--muted-foreground)]">Source</dt>
-                <dd className="truncate">{modelSource}</dd>
-              </>
-            )}
+          <h3 className="text-sm font-medium mb-3">LLM Model</h3>
+          <dl className="grid grid-cols-[140px_1fr] gap-x-6 gap-y-2 text-sm">
+            <Row label="Model" value={m.name} />
+            <Row label="Source" value={sysInfo?.source} />
+            <Row label="Family" value={m.family} />
+            <Row label="Parameters" value={m.parameter_size} />
+            <Row label="Quantization" value={m.quantization} />
+            <Row
+              label="Context Length"
+              value={m.context_length ? formatCtx(m.context_length) + " tokens" : null}
+            />
+            <Row label="MoE Experts" value={m.experts} />
           </dl>
         </section>
       )}
 
+      {/* Ollama / Inference Server */}
+      {o && (
+        <section>
+          <h3 className="text-sm font-medium mb-3">Inference Server</h3>
+          <dl className="grid grid-cols-[140px_1fr] gap-x-6 gap-y-2 text-sm">
+            <Row label="Ollama" value={o.version ? `v${o.version}` : null} />
+            <Row
+              label="Status"
+              value={
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`w-2 h-2 rounded-full ${o.model_loaded ? "bg-green-500" : "bg-yellow-500"}`}
+                  />
+                  {o.model_loaded ? "Model loaded" : "No model loaded"}
+                </span>
+              }
+            />
+            <Row
+              label="Model Size"
+              value={o.model_size_gb ? `${o.model_size_gb} GB` : null}
+            />
+            <Row
+              label="VRAM Used"
+              value={o.vram_used_gb ? `${o.vram_used_gb} GB` : null}
+            />
+            {o.gpu_count && <Row label="GPUs" value={o.gpu_count} />}
+          </dl>
+        </section>
+      )}
+
+      {/* GPU */}
+      {g && g.devices.length > 0 && (
+        <section>
+          <h3 className="text-sm font-medium mb-3">GPU</h3>
+          <dl className="grid grid-cols-[140px_1fr] gap-x-6 gap-y-2 text-sm">
+            {g.devices.map((dev, i) => (
+              <Row
+                key={i}
+                label={g.devices.length > 1 ? `GPU ${i}` : "Device"}
+                value={`${dev.name} (${Math.round(dev.memory_total_mb / 1024)} GB)`}
+              />
+            ))}
+            {g.devices[0]?.memory_used_mb != null && (
+              <Row
+                label="VRAM Usage"
+                value={`${Math.round(g.devices[0].memory_used_mb / 1024)} / ${Math.round(g.devices[0].memory_total_mb / 1024)} GB`}
+              />
+            )}
+            <Row label="Driver" value={g.driver_version} />
+          </dl>
+        </section>
+      )}
+
+      {/* System Status */}
+      <section>
+        <h3 className="text-sm font-medium mb-3">System Status</h3>
+        <dl className="grid grid-cols-[140px_1fr] gap-x-6 gap-y-2 text-sm">
+          <Row
+            label="Backend"
+            value={
+              <span className="flex items-center gap-2">
+                <span
+                  className={`w-2 h-2 rounded-full ${health ? "bg-green-500" : "bg-red-500"}`}
+                />
+                {health ? "Connected" : "Offline"}
+              </span>
+            }
+          />
+          {health && (
+            <>
+              <Row
+                label="Code Execution"
+                value={health.celery_active ? "Celery active" : "In-process"}
+              />
+              <Row label="Version" value={health.version || "—"} />
+            </>
+          )}
+          {w && (
+            <Row
+              label="Task Timeout"
+              value={`${w.task_timeout}s`}
+            />
+          )}
+          {sysInfo && (
+            <Row
+              label="Agent Timeout"
+              value={`${sysInfo.timeout_seconds}s`}
+            />
+          )}
+        </dl>
+      </section>
+
+      {/* WES Service Info */}
       {serviceInfo && (
         <section>
-          <h3 className="text-sm font-medium mb-3">WES Service Info</h3>
-          <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            <dt className="text-[var(--muted-foreground)]">WES Versions</dt>
-            <dd>{serviceInfo.supported_wes_versions.join(", ")}</dd>
-            <dt className="text-[var(--muted-foreground)]">Workflow Types</dt>
-            <dd>
-              {Object.keys(serviceInfo.workflow_type_versions).join(", ") || "—"}
-            </dd>
-            <dt className="text-[var(--muted-foreground)]">Engine</dt>
-            <dd>
-              {Object.entries(serviceInfo.workflow_engine_versions)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(", ") || "—"}
-            </dd>
+          <h3 className="text-sm font-medium mb-3">WES Service</h3>
+          <dl className="grid grid-cols-[140px_1fr] gap-x-6 gap-y-2 text-sm">
+            <Row
+              label="WES Versions"
+              value={serviceInfo.supported_wes_versions.join(", ")}
+            />
+            <Row
+              label="Workflow Types"
+              value={Object.keys(serviceInfo.workflow_type_versions).join(", ") || "—"}
+            />
+            <Row
+              label="Engine"
+              value={
+                Object.entries(serviceInfo.workflow_engine_versions)
+                  .map(([k, v]) => `${k} ${v}`)
+                  .join(", ") || "—"
+              }
+            />
           </dl>
         </section>
       )}
