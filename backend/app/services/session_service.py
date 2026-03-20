@@ -68,7 +68,13 @@ async def add_message(
     message_type: str | None = None,
     metadata: dict | None = None,
 ) -> Message:
-    # Get next sequence number
+    # Lock the session row to serialize concurrent add_message calls,
+    # preventing duplicate sequence numbers from SELECT MAX + INSERT race.
+    await db.execute(
+        select(Session.id).where(Session.id == session_id).with_for_update()
+    )
+
+    # Get next sequence number (safe under row lock)
     result = await db.execute(
         select(func.coalesce(func.max(Message.sequence_num), 0)).where(Message.session_id == session_id)
     )

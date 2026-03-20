@@ -18,6 +18,16 @@ _session_locks: dict[uuid.UUID, asyncio.Lock] = {}
 _celery_patched = False
 
 
+def _sanitize_error(msg: str) -> str:
+    """Remove internal paths and sensitive details from error messages."""
+    # Strip filesystem paths (e.g., /app/Biomni/..., /home/user/...)
+    sanitized = re.sub(r"(/[\w./-]+){3,}", "<path>", msg)
+    # Truncate overly long messages
+    if len(sanitized) > 200:
+        sanitized = sanitized[:200] + "..."
+    return sanitized or "An internal error occurred"
+
+
 def _get_session_lock(session_id: uuid.UUID) -> asyncio.Lock:
     if session_id not in _session_locks:
         _session_locks[session_id] = asyncio.Lock()
@@ -79,6 +89,12 @@ def get_agent():
     return _agent
 
 
+def is_session_busy(session_id: uuid.UUID) -> bool:
+    """Check if a session lock is currently held (i.e., a request is in progress)."""
+    lock = _session_locks.get(session_id)
+    return lock is not None and lock.locked()
+
+
 async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[dict, None]:
     """Stream agent responses as structured events.
 
@@ -127,7 +143,9 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
                 loop.call_soon_threadsafe(queue.put_nowait, {"event": "done", "data": {}})
             except Exception as e:
                 logger.exception("Agent streaming error")
-                loop.call_soon_threadsafe(queue.put_nowait, {"event": "error", "data": {"error": str(e)}})
+                # Sanitize error: don't expose internal paths or stack traces to clients
+                safe_msg = _sanitize_error(str(e))
+                loop.call_soon_threadsafe(queue.put_nowait, {"event": "error", "data": {"error": safe_msg}})
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
         # Copy context so contextvars propagate to the background thread

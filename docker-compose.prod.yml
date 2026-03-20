@@ -1,0 +1,13 @@
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Changes from default:
+# - Removes host port bindings for Postgres and Redis (internal-only)
+# - Ensures Redis authentication is enabled
+
+services:
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []

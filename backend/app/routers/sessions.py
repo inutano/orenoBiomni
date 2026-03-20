@@ -55,7 +55,11 @@ async def chat(session_id: uuid.UUID, body: ChatRequest, db: AsyncSession = Depe
     if not agent_manager.is_agent_ready():
         raise HTTPException(status_code=503, detail="Agent not ready")
 
-    # Persist user message
+    # Check if session is already processing before persisting the message
+    if agent_manager.is_session_busy(session_id):
+        raise HTTPException(status_code=409, detail="Session is already processing a request")
+
+    # Persist user message (only after confirming session is not busy)
     await session_service.add_message(db, session_id, role="user", content=body.message)
 
     # Load message history and convert to LangChain messages

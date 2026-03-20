@@ -58,7 +58,7 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - BIOMNI_DATA_PATH=./data
       - BIOMNI_TIMEOUT_SECONDS=${BIOMNI_TIMEOUT_SECONDS:-600}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - WORKSPACE_BASE_PATH=/data/workspaces
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -83,7 +83,7 @@ services:
       dockerfile: docker/Dockerfile.worker
     environment:
       - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-biomni}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/orenoiomni
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - WORKSPACE_BASE_PATH=/data/workspaces
       - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-2}
     volumes:
@@ -149,14 +149,23 @@ services:
     restart: unless-stopped
 
   # Redis (Celery broker + result backend)
+  # NOTE: Docker socket is intentionally NOT mounted into any container
   redis:
     image: redis:7-alpine
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes;
+      else
+        redis-server --appendonly yes;
+      fi'
     ports:
       - "${REDIS_PORT:-6379}:6379"
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a $REDIS_PASSWORD} ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 5
