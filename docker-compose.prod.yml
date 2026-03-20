@@ -28,6 +28,8 @@ services:
       - redis_password
 
   backend:
+    environment:
+      - LOG_FORMAT=json
     secrets:
       - postgres_password
       - redis_password
@@ -37,6 +39,7 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # Scale workers: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --scale worker=4
   worker:
     logging:
       driver: json-file

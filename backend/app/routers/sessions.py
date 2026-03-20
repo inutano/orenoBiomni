@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from ..database import get_db
 from ..schemas.session import ChatRequest, SessionCreate, SessionListItem, SessionRead
 from ..services import agent_manager, session_service
+from ..routers.metrics import inc_chat
 from ..streaming.sse import format_sse
 
 router = APIRouter(prefix="/sessions")
@@ -60,6 +61,7 @@ async def chat(session_id: uuid.UUID, body: ChatRequest, db: AsyncSession = Depe
         raise HTTPException(status_code=409, detail="Session is already processing a request")
 
     # Persist user message (only after confirming session is not busy)
+    inc_chat()
     await session_service.add_message(db, session_id, role="user", content=body.message)
 
     # Load message history and convert to LangChain messages

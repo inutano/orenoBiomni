@@ -14,6 +14,7 @@ from ..models.job import Job, RunState
 from ..tasks.execute import execute_bash, execute_python, execute_r
 
 logger = logging.getLogger(__name__)
+audit = logging.getLogger("audit")
 
 _TASK_MAP = {
     "python": execute_python,
@@ -72,13 +73,18 @@ def submit_job_sync(
             .values(celery_task_id=async_result.id)
         )
 
-    logger.info("Submitted %s job %s to Celery", job_type, job_id)
+    audit.info(
+        "CODE_EXEC session=%s job=%s type=%s code_len=%d timeout=%d",
+        session_id, job_id, job_type, len(code), timeout,
+    )
 
     # Block until result is ready
     try:
         result = async_result.get(timeout=timeout + 60)
+        audit.info("CODE_EXEC_OK job=%s", job_id)
     except Exception as e:
         logger.exception("Job %s failed or timed out", job_id)
+        audit.warning("CODE_EXEC_FAIL job=%s error=%s", job_id, type(e).__name__)
         result = f"Error in execution: {e}"
 
     return job_id, result
@@ -109,7 +115,10 @@ async def dispatch_job_async(job: Job) -> None:
             .values(celery_task_id=async_result.id)
         )
 
-    logger.info("Dispatched %s run %s to Celery", job.job_type, job.id)
+    audit.info(
+        "CODE_EXEC session=%s job=%s type=%s code_len=%d",
+        job.session_id, job.id, job.job_type, len(job.code or ""),
+    )
 
 
 async def list_jobs(
