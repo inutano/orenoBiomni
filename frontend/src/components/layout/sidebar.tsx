@@ -9,7 +9,7 @@ import { truncateId, relativeTime, cn } from "@/lib/utils";
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { sessions, isLoading, create, remove } = useSessions();
+  const { sessions, isLoading, error, create, remove } = useSessions();
 
   const activeSessionId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
@@ -43,6 +43,11 @@ export function Sidebar() {
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-8 rounded-lg bg-[var(--border)] animate-pulse" />
             ))}
+          </div>
+        )}
+        {error && (
+          <div className="px-3 py-2 text-xs text-[var(--destructive)]">
+            {error}
           </div>
         )}
         {sessions.map((s) => (

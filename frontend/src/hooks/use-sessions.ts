@@ -7,12 +7,14 @@ import type { SessionListItem } from "@/types/session";
 export function useSessions() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       setSessions(await api.listSessions());
-    } catch {
-      // ignore
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load sessions");
     } finally {
       setIsLoading(false);
     }
@@ -42,5 +44,5 @@ export function useSessions() {
     [refresh],
   );
 
-  return { sessions, isLoading, refresh, create, remove };
+  return { sessions, isLoading, error, refresh, create, remove };
 }

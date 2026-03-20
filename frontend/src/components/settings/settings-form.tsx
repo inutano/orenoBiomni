@@ -26,12 +26,17 @@ export function SettingsForm() {
   const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
   const [serviceInfo, setServiceInfo] = useState<ServiceInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const errors: string[] = [];
     Promise.allSettled([
-      getSystemInfo().then(setSysInfo),
-      getServiceInfo().then(setServiceInfo),
-    ]).finally(() => setLoading(false));
+      getSystemInfo().then(setSysInfo).catch((e) => errors.push(`System info: ${e.message}`)),
+      getServiceInfo().then(setServiceInfo).catch((e) => errors.push(`Service info: ${e.message}`)),
+    ]).finally(() => {
+      if (errors.length) setError(errors.join("; "));
+      setLoading(false);
+    });
   }, []);
 
   if (loading) {
@@ -54,6 +59,11 @@ export function SettingsForm() {
 
   return (
     <div className="space-y-8 max-w-2xl">
+      {error && (
+        <div className="text-sm text-[var(--destructive)] bg-red-50 dark:bg-red-900/20 rounded-lg px-4 py-2">
+          Failed to load: {error}
+        </div>
+      )}
       {/* LLM Model */}
       {m && (
         <section>

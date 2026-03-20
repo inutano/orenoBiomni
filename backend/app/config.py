@@ -1,4 +1,12 @@
+import logging
+import sys
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+_VALID_SOURCES = {"Ollama", "Anthropic", "OpenAI", "Custom"}
 
 
 class Settings(BaseSettings):
@@ -32,6 +40,20 @@ class Settings(BaseSettings):
     # Auth (Phase 3)
     auth_enabled: bool = False
 
+    @model_validator(mode="after")
+    def validate_source_and_keys(self):
+        if self.biomni_source not in _VALID_SOURCES:
+            raise ValueError(
+                f"BIOMNI_SOURCE must be one of {_VALID_SOURCES}, got '{self.biomni_source}'"
+            )
+        if self.biomni_source == "Anthropic" and not self.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY is required when BIOMNI_SOURCE=Anthropic")
+        if self.biomni_source == "OpenAI" and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when BIOMNI_SOURCE=OpenAI")
+        if self.biomni_source == "Custom" and not self.biomni_custom_base_url:
+            raise ValueError("BIOMNI_CUSTOM_BASE_URL is required when BIOMNI_SOURCE=Custom")
+        return self
+
     @property
     def database_url_sync(self) -> str:
         """Sync DB URL for Celery workers (psycopg2 instead of asyncpg)."""
@@ -44,4 +66,9 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+try:
+    settings = Settings()
+except Exception as e:
+    logger.critical("Configuration error: %s", e)
+    print(f"\n  Configuration error: {e}\n", file=sys.stderr)
+    sys.exit(1)
