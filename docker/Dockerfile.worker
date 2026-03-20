@@ -40,4 +40,7 @@ WORKDIR /app
 COPY docker/entrypoint-worker.sh /app/entrypoint-worker.sh
 RUN chmod +x /app/entrypoint-worker.sh
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD conda run -n biomni_e1 celery -A backend.app.celery_app inspect ping --timeout 5 || exit 1
+
 ENTRYPOINT ["/app/entrypoint-worker.sh"]

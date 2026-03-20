@@ -1,5 +1,7 @@
 import logging
+import os
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,7 +10,20 @@ from .config import settings
 from .routers import health, sessions, system_info, wes
 from .services import agent_manager
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+_LOG_FORMAT = "%(asctime)s %(name)s %(levelname)s %(message)s"
+logging.basicConfig(level=logging.INFO, format=_LOG_FORMAT)
+
+# Persistent file logging (if log directory exists)
+_LOG_DIR = "/var/log/orenoiomni"
+if os.path.isdir(_LOG_DIR):
+    file_handler = RotatingFileHandler(
+        os.path.join(_LOG_DIR, "backend.log"),
+        maxBytes=50 * 1024 * 1024,  # 50 MB
+        backupCount=5,
+    )
+    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    logging.getLogger().addHandler(file_handler)
+
 # Enable debug logging for the event parser
 logging.getLogger("backend.app.services.agent_manager").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)

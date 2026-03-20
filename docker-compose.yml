@@ -46,6 +46,9 @@ services:
     # GPU visibility for nvidia-smi (system-info endpoint)
     deploy:
       resources:
+        limits:
+          cpus: "4"
+          memory: 4G
         reservations:
           devices:
             - driver: nvidia
@@ -67,6 +70,7 @@ services:
     volumes:
       - biomni-data:/app/Biomni/data
       - workspaces:/data/workspaces
+      - logs:/var/log/orenoiomni
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -89,6 +93,7 @@ services:
     volumes:
       - biomni-data:/app/Biomni/data
       - workspaces:/data/workspaces
+      - logs:/var/log/orenoiomni
     depends_on:
       redis:
         condition: service_healthy
@@ -177,3 +182,4 @@ volumes:
   postgres-data:
   redis-data:
   workspaces:
+  logs:

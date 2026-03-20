@@ -3,11 +3,57 @@
 #
 # Changes from default:
 # - Removes host port bindings for Postgres and Redis (internal-only)
-# - Ensures Redis authentication is enabled
+# - Uses Docker secrets for sensitive credentials
+# - Adds logging driver configuration
+#
+# Setup:
+#   echo "your-db-password" | docker secret create postgres_password -
+#   echo "your-redis-password" | docker secret create redis_password -
+# Or for non-swarm (file-based secrets):
+#   mkdir -p ./secrets
+#   echo "your-db-password" > ./secrets/postgres_password
+#   echo "your-redis-password" > ./secrets/redis_password
 
 services:
   postgres:
     ports: !reset []
+    environment:
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    secrets:
+      - postgres_password
 
   redis:
     ports: !reset []
+    secrets:
+      - redis_password
+
+  backend:
+    secrets:
+      - postgres_password
+      - redis_password
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  worker:
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  frontend:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# File-based secrets (for non-swarm deployments)
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  redis_password:
+    file: ./secrets/redis_password
