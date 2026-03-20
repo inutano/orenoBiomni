@@ -18,6 +18,8 @@ export function ThinkingBlock({ content }: { content: string }) {
     <div className="border border-[var(--border)] rounded-lg overflow-hidden text-sm">
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label="Toggle thinking details"
         className="flex items-center gap-2 w-full px-3 py-2 text-left bg-[var(--muted)] text-[var(--muted-foreground)] hover:opacity-80"
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

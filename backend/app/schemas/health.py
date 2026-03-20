@@ -7,4 +7,5 @@ class HealthResponse(BaseModel):
     database: str
     redis: str = "not_configured"
     celery_active: bool = False
+    celery_status: str = "inactive"
     version: str

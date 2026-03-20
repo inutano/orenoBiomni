@@ -1,8 +1,10 @@
 """Bridge between the A1 agent and Celery workers for code execution."""
 
 import logging
+import shutil
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,6 +128,17 @@ async def list_jobs(
 async def get_job(db: AsyncSession, job_id: uuid.UUID) -> Job | None:
     result = await db.execute(select(Job).where(Job.id == job_id))
     return result.scalar_one_or_none()
+
+
+async def cleanup_workspace(job: Job) -> None:
+    """Remove workspace files for a job."""
+    workspace = Path(settings.workspace_base_path) / str(job.session_id) / str(job.id)
+    if workspace.exists():
+        try:
+            shutil.rmtree(workspace)
+            logger.info("Cleaned up workspace for job %s", job.id)
+        except Exception:
+            logger.warning("Failed to clean up workspace for job %s", job.id, exc_info=True)
 
 
 async def cancel_job(db: AsyncSession, job_id: uuid.UUID) -> Job | None:

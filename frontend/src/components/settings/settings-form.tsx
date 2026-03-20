@@ -25,11 +25,27 @@ export function SettingsForm() {
   const { health } = useHealth();
   const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
   const [serviceInfo, setServiceInfo] = useState<ServiceInfo | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getSystemInfo().then(setSysInfo).catch(() => {});
-    getServiceInfo().then(setServiceInfo).catch(() => {});
+    Promise.allSettled([
+      getSystemInfo().then(setSysInfo),
+      getServiceInfo().then(setServiceInfo),
+    ]).finally(() => setLoading(false));
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-8 max-w-2xl">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="space-y-3">
+            <div className="h-4 w-32 rounded bg-[var(--border)] animate-pulse" />
+            <div className="h-20 rounded bg-[var(--border)] animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   const m = sysInfo?.model;
   const o = sysInfo?.ollama;

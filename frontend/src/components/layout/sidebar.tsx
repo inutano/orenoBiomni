@@ -9,7 +9,7 @@ import { truncateId, relativeTime, cn } from "@/lib/utils";
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { sessions, create, remove } = useSessions();
+  const { sessions, isLoading, create, remove } = useSessions();
 
   const activeSessionId = pathname.startsWith("/chat/")
     ? pathname.split("/")[2]
@@ -29,6 +29,7 @@ export function Sidebar() {
       <div className="p-2">
         <button
           onClick={handleNewChat}
+          aria-label="Start a new chat session"
           className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-80"
         >
           <Plus size={16} />
@@ -36,7 +37,14 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1" role="list" aria-label="Chat sessions">
+        {isLoading && (
+          <div className="space-y-2 px-3 py-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-8 rounded-lg bg-[var(--border)] animate-pulse" />
+            ))}
+          </div>
+        )}
         {sessions.map((s) => (
           <div
             key={s.id}
@@ -61,6 +69,7 @@ export function Sidebar() {
                 }
               }}
               className="hidden group-hover:block text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+              aria-label={`Delete session ${s.title || truncateId(s.id)}`}
               title="Delete session"
             >
               <Trash2 size={14} />

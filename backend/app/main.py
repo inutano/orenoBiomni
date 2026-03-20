@@ -23,8 +23,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to initialize agent — chat will be unavailable")
     yield
-    # Shutdown
-    logger.info("Shutting down orenoBiomni backend.")
+    # Shutdown: drain in-flight agent streams before exiting
+    logger.info("Shutting down orenoBiomni backend...")
+    await agent_manager.shutdown()
 
 
 app = FastAPI(

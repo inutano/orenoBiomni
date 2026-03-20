@@ -16,6 +16,8 @@ _agent_ready = False
 _agent_lock = asyncio.Lock()
 _session_locks: dict[uuid.UUID, asyncio.Lock] = {}
 _celery_patched = False
+_active_threads: list[threading.Thread] = []
+_timeout_seconds: int = 600
 
 
 def _sanitize_error(msg: str) -> str:
@@ -36,7 +38,7 @@ def _get_session_lock(session_id: uuid.UUID) -> asyncio.Lock:
 
 async def init_agent(settings) -> None:
     """Initialize the A1 agent. Called once during app startup."""
-    global _agent, _agent_ready, _celery_patched
+    global _agent, _agent_ready, _celery_patched, _timeout_seconds
 
     import os
     os.environ["OLLAMA_HOST"] = settings.ollama_base_url
@@ -58,6 +60,7 @@ async def init_agent(settings) -> None:
 
     _agent = await asyncio.to_thread(_create)
     _agent_ready = True
+    _timeout_seconds = settings.biomni_timeout_seconds
     logger.info("A1 agent ready.")
 
     # Apply Celery monkey-patch if Redis is available
@@ -73,6 +76,16 @@ async def init_agent(settings) -> None:
             _celery_patched = True
         except Exception:
             logger.warning("Redis not available — code execution will run in-process (no Celery)")
+
+
+async def shutdown() -> None:
+    """Drain in-flight agent threads on shutdown."""
+    if _active_threads:
+        logger.info("Waiting for %d active agent thread(s) to finish...", len(_active_threads))
+        for t in list(_active_threads):
+            t.join(timeout=10)
+        _active_threads.clear()
+    logger.info("Agent manager shutdown complete.")
 
 
 def is_agent_ready() -> bool:
@@ -152,16 +165,26 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
         ctx = contextvars.copy_context()
         thread = threading.Thread(target=ctx.run, args=(_run_stream,), daemon=True)
         thread.start()
+        _active_threads.append(thread)
 
-        while True:
-            event = await queue.get()
-            if event is None:
-                break
-            yield event
-            if event["event"] in ("done", "error"):
-                break
-
-        thread.join(timeout=5)
+        try:
+            # Server-side timeout: _timeout_seconds + 60s buffer for code execution
+            deadline = _timeout_seconds + 60
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=deadline)
+                except asyncio.TimeoutError:
+                    yield {"event": "error", "data": {"error": "Agent timed out"}}
+                    break
+                if event is None:
+                    break
+                yield event
+                if event["event"] in ("done", "error"):
+                    break
+        finally:
+            thread.join(timeout=5)
+            if thread in _active_threads:
+                _active_threads.remove(thread)
 
 
 def _extract_last_tag(tag: str, text: str) -> str | None:

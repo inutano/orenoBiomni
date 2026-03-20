@@ -223,6 +223,26 @@ async def get_run_task(run_id: str, task_id: str, db: AsyncSession = Depends(get
     return _job_to_task_log(job)
 
 
+@router.delete("/runs/{run_id}", response_model=RunId)
+async def delete_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    job = await execution_service.get_job(db, uuid.UUID(run_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # Cancel if still running
+    if job.state not in (RunState.COMPLETE, RunState.EXECUTOR_ERROR, RunState.CANCELED):
+        await execution_service.cancel_job(db, uuid.UUID(run_id))
+
+    # Clean up workspace files
+    await execution_service.cleanup_workspace(job)
+
+    # Delete from database
+    await db.delete(job)
+    await db.commit()
+
+    return RunId(run_id=run_id)
+
+
 @router.post("/runs/{run_id}/cancel", response_model=RunId)
 async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db)):
     job = await execution_service.cancel_job(db, uuid.UUID(run_id))
