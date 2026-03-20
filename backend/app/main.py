@@ -9,6 +9,8 @@ from .routers import health, sessions, wes
 from .services import agent_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+# Enable debug logging for the event parser
+logging.getLogger("backend.app.services.agent_manager").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

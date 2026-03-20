@@ -105,12 +105,25 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
             try:
                 inputs = {"messages": messages, "next_step": None}
                 config = {"recursion_limit": 500, "configurable": {"thread_id": str(session_id)}}
+                first_state = True
+                seen_msg_count = 0
                 for state in agent.app.stream(inputs, stream_mode="values", config=config):
-                    if state.get("messages"):
-                        last_msg = state["messages"][-1]
-                        event = _parse_message_to_event(last_msg)
-                        if event:
+                    msgs = state.get("messages", [])
+                    if not msgs:
+                        continue
+                    if first_state:
+                        # First emission contains input/historical messages — skip them all
+                        seen_msg_count = len(msgs)
+                        first_state = False
+                        logger.debug("Initial state has %d messages, skipping", seen_msg_count)
+                        continue
+                    if len(msgs) <= seen_msg_count:
+                        continue
+                    # Process only new messages since last state
+                    for new_msg in msgs[seen_msg_count:]:
+                        for event in _parse_message_to_events(new_msg):
                             loop.call_soon_threadsafe(queue.put_nowait, event)
+                    seen_msg_count = len(msgs)
                 loop.call_soon_threadsafe(queue.put_nowait, {"event": "done", "data": {}})
             except Exception as e:
                 logger.exception("Agent streaming error")
@@ -133,15 +146,32 @@ async def stream_chat(session_id: uuid.UUID, messages: list) -> AsyncGenerator[d
         thread.join(timeout=5)
 
 
-def _parse_message_to_event(msg) -> dict | None:
-    """Parse a LangChain message into a structured SSE event."""
+def _extract_last_tag(tag: str, text: str) -> str | None:
+    """Extract content from the LAST occurrence of <tag>...</tag> (or unclosed <tag>...).
+
+    Only matches tags at the start of a line (with optional whitespace) to avoid
+    prose mentions like 'I should use the <solution> tag'.
+    """
+    pattern = re.compile(rf"(?:^|\n)\s*<{tag}>(.*?)(?:</{tag}>|$)", re.DOTALL | re.IGNORECASE)
+    matches = list(pattern.finditer(text))
+    if matches:
+        return matches[-1].group(1).strip()
+    return None
+
+
+def _parse_message_to_events(msg) -> list[dict]:
+    """Parse a LangChain message into structured SSE events.
+
+    Returns a list because a single message may contain both <thinking>
+    and <solution>/<execute> blocks.
+    """
     from langchain_core.messages import AIMessage, HumanMessage
 
     if isinstance(msg, HumanMessage):
-        return None  # Don't echo back user messages
+        return []
 
     if not isinstance(msg, AIMessage):
-        return None
+        return []
 
     content = msg.content
     if isinstance(content, list):
@@ -149,25 +179,56 @@ def _parse_message_to_event(msg) -> dict | None:
             b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") in ("text", "output_text")
         )
 
-    # Strip think blocks
-    content_stripped = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL | re.IGNORECASE).strip()
+    logger.debug("Raw AI content (%d chars): %.200s...", len(content), content)
 
-    # Check for solution
-    solution_match = re.search(r"<solution>(.*?)</solution>", content_stripped, re.DOTALL | re.IGNORECASE)
-    if solution_match:
-        return {"event": "solution", "data": {"content": solution_match.group(1).strip()}}
+    events: list[dict] = []
 
-    # Check for execute
-    execute_match = re.search(r"<execute>(.*?)</execute>", content_stripped, re.DOTALL | re.IGNORECASE)
-    if execute_match:
-        return {"event": "execute", "data": {"content": execute_match.group(1).strip()}}
+    # Extract <thinking> content as a "thinking" event (before stripping)
+    thinking_text = _extract_last_tag("think(?:ing)?", content)
+    if thinking_text:
+        logger.debug("Parsed THINKING (%d chars)", len(thinking_text))
+        events.append({"event": "thinking", "data": {"content": thinking_text}})
 
-    # Check for observation (execution result)
+    # Strip <think>/<thinking> blocks to check remaining content
+    content_stripped = re.sub(r"<think(?:ing)?>.*?</think(?:ing)?>", "", content, flags=re.DOTALL | re.IGNORECASE)
+    content_stripped = re.sub(r"<think(?:ing)?>(?:(?!</think)[\s\S])*$", "", content_stripped, flags=re.IGNORECASE)
+    content_stripped = content_stripped.strip()
+
+    # Check for solution — use LAST occurrence to skip prose mentions
+    solution_text = _extract_last_tag("solution", content_stripped)
+    if solution_text:
+        logger.debug("Parsed SOLUTION (%d chars)", len(solution_text))
+        events.append({"event": "solution", "data": {"content": solution_text}})
+        return events
+
+    # Check for execute — use LAST occurrence
+    execute_text = _extract_last_tag("execute", content_stripped)
+    if execute_text:
+        logger.debug("Parsed EXECUTE (%d chars)", len(execute_text))
+        events.append({"event": "execute", "data": {"content": execute_text}})
+        return events
+
+    # Detect Biomni-style untagged code blocks (#!PYTHON, #!BASH, #!R)
+    code_match = re.match(r"^#!(PYTHON|BASH|R)\s*\n(.+)", content_stripped, re.DOTALL | re.IGNORECASE)
+    if code_match:
+        logger.debug("Parsed untagged %s code as EXECUTE (%d chars)", code_match.group(1), len(content_stripped))
+        events.append({"event": "execute", "data": {"content": content_stripped}})
+        return events
+
+    # Check for observation tags (execution results from the agent)
+    observation_text = _extract_last_tag("observation", content_stripped)
+    if observation_text:
+        logger.debug("Parsed OBSERVATION as THINKING (%d chars)", len(observation_text))
+        events.append({"event": "thinking", "data": {"content": observation_text}})
+        return events
+
+    # Check for error indicators
     if "Execution terminated" in content or "parsing error" in content.lower():
-        return {"event": "error", "data": {"content": content_stripped}}
+        events.append({"event": "error", "data": {"content": content_stripped}})
+        return events
 
-    # General assistant message (thinking, intermediate text)
-    if content_stripped:
-        return {"event": "thinking", "data": {"content": content_stripped}}
+    # Untagged AI content with no thinking = failed parse attempt, suppress.
+    if content_stripped and not events:
+        logger.debug("Suppressed untagged AI content (%d chars): %.120s...", len(content_stripped), content_stripped)
 
-    return None
+    return events
