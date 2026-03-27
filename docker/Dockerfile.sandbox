@@ -1,0 +1,33 @@
+# orenoBiomni Sandbox — ephemeral container for code execution
+#
+# Build:
+#   docker compose build sandbox
+# Or standalone:
+#   docker build -t orenoiomni-sandbox:latest -f docker/Dockerfile.sandbox .
+
+FROM condaforge/miniforge3:latest
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    r-base curl wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create conda env from Biomni's environment.yml
+COPY Biomni/biomni_env/environment.yml /tmp/environment.yml
+RUN conda env create -f /tmp/environment.yml -n biomni_e1 \
+    && conda clean -afy \
+    && rm /tmp/environment.yml
+
+# Install Biomni (for tool functions)
+COPY Biomni /app/Biomni
+WORKDIR /app/Biomni
+RUN conda run -n biomni_e1 pip install -e . -q
+
+WORKDIR /workspace
+
+# Run as non-root user
+RUN useradd -m -s /bin/bash sandbox
+USER sandbox
+
+# Default: activate conda env
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "biomni_e1"]
+CMD ["bash"]

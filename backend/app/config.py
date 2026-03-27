@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     celery_task_timeout: int = 600
     workspace_base_path: str = "/data/workspaces"
 
+    # Sandbox execution
+    sandbox_enabled: bool = False  # When False, execute directly (backward compatible)
+    sandbox_image_python: str = "orenoiomni-sandbox:latest"
+    sandbox_image_r: str = "orenoiomni-sandbox:latest"
+    sandbox_image_bash: str = "orenoiomni-sandbox:latest"
+    sandbox_cpus: float = 2.0  # CPU limit per container
+    sandbox_memory: str = "4g"  # Memory limit per container
+    sandbox_network_disabled: bool = True  # Disable network in sandbox (security)
+    sandbox_tmpfs_size: str = "512m"  # tmpfs /tmp size
+
     # Auth (Phase 3)
     auth_enabled: bool = False
     auth_secret: str = "change-me-in-production"  # JWT signing secret

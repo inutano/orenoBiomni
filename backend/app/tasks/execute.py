@@ -73,25 +73,52 @@ def _notify_pipeline(pipeline_id: str | None, job_id: str) -> None:
         logger.exception("Failed to dispatch pipeline callback for pipeline=%s job=%s", pipeline_id, job_id)
 
 
-@celery.task(name="backend.app.tasks.execute.execute_python", bind=True)
-def execute_python(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
+def _run_direct(code: str, workspace: str, job_type: str) -> str:
+    """Run code directly in the worker process (legacy mode)."""
+    old_cwd = os.getcwd()
+    os.chdir(workspace)
+    try:
+        if job_type == "python":
+            from biomni.tool.support_tools import run_python_repl
+            return run_python_repl(code)
+        elif job_type == "r":
+            from biomni.utils import run_r_code
+            return run_r_code(code)
+        elif job_type == "bash":
+            from biomni.utils import run_bash_script
+            return run_bash_script(code)
+        else:
+            raise ValueError(f"Unknown job type: {job_type}")
+    finally:
+        os.chdir(old_cwd)
+
+
+def _execute_job(task, job_id: str, session_id: str, code: str, timeout: int, job_type: str, pipeline_id: str | None = None):
+    """Common execution logic shared by all code execution tasks.
+
+    Decides whether to use sandbox (Docker container) or direct execution
+    based on settings.sandbox_enabled.
+    """
     jid = uuid.UUID(job_id)
     now = datetime.now(timezone.utc)
-    update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
+    update_job_status(jid, RUNNING, worker_id=task.request.hostname, started_at=now)
     _publish_status(job_id, RUNNING)
 
     workspace = _ensure_workspace(session_id)
     scan_start = now.timestamp()
 
     try:
-        from biomni.tool.support_tools import run_python_repl
+        if settings.sandbox_enabled:
+            from .sandbox import run_in_sandbox
 
-        old_cwd = os.getcwd()
-        os.chdir(workspace)
-        try:
-            result = run_python_repl(code)
-        finally:
-            os.chdir(old_cwd)
+            stdout, stderr, exit_code = run_in_sandbox(
+                job_id, session_id, code, job_type, timeout,
+            )
+            result = stdout
+            if exit_code != 0:
+                raise RuntimeError(stderr or f"Sandbox exited with code {exit_code}")
+        else:
+            result = _run_direct(code, workspace, job_type)
 
         artifacts = _scan_new_files(workspace, scan_start)
         update_job_status(
@@ -107,7 +134,7 @@ def execute_python(self, job_id: str, session_id: str, code: str, timeout: int, 
         return result
 
     except Exception as e:
-        logger.exception("Python execution failed for job %s", job_id)
+        logger.exception("%s execution failed for job %s", job_type.capitalize(), job_id)
         update_job_status(
             jid, EXECUTOR_ERROR,
             stderr=str(e), exit_code=1,
@@ -116,93 +143,18 @@ def execute_python(self, job_id: str, session_id: str, code: str, timeout: int, 
         _publish_status(job_id, EXECUTOR_ERROR, str(e))
         _notify_pipeline(pipeline_id, job_id)
         return f"Error in execution: {e}"
+
+
+@celery.task(name="backend.app.tasks.execute.execute_python", bind=True)
+def execute_python(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
+    return _execute_job(self, job_id, session_id, code, timeout, "python", pipeline_id)
 
 
 @celery.task(name="backend.app.tasks.execute.execute_r", bind=True)
 def execute_r(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
-    jid = uuid.UUID(job_id)
-    now = datetime.now(timezone.utc)
-    update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
-    _publish_status(job_id, RUNNING)
-
-    workspace = _ensure_workspace(session_id)
-    scan_start = now.timestamp()
-
-    try:
-        from biomni.utils import run_r_code
-
-        old_cwd = os.getcwd()
-        os.chdir(workspace)
-        try:
-            result = run_r_code(code)
-        finally:
-            os.chdir(old_cwd)
-
-        artifacts = _scan_new_files(workspace, scan_start)
-        update_job_status(
-            jid,
-            COMPLETE,
-            stdout=result,
-            exit_code=0,
-            artifacts={"files": artifacts} if artifacts else None,
-            completed_at=datetime.now(timezone.utc),
-        )
-        _publish_status(job_id, COMPLETE)
-        _notify_pipeline(pipeline_id, job_id)
-        return result
-
-    except Exception as e:
-        logger.exception("R execution failed for job %s", job_id)
-        update_job_status(
-            jid, EXECUTOR_ERROR,
-            stderr=str(e), exit_code=1,
-            completed_at=datetime.now(timezone.utc),
-        )
-        _publish_status(job_id, EXECUTOR_ERROR, str(e))
-        _notify_pipeline(pipeline_id, job_id)
-        return f"Error in execution: {e}"
+    return _execute_job(self, job_id, session_id, code, timeout, "r", pipeline_id)
 
 
 @celery.task(name="backend.app.tasks.execute.execute_bash", bind=True)
 def execute_bash(self, job_id: str, session_id: str, code: str, timeout: int, pipeline_id: str | None = None):
-    jid = uuid.UUID(job_id)
-    now = datetime.now(timezone.utc)
-    update_job_status(jid, RUNNING, worker_id=self.request.hostname, started_at=now)
-    _publish_status(job_id, RUNNING)
-
-    workspace = _ensure_workspace(session_id)
-    scan_start = now.timestamp()
-
-    try:
-        from biomni.utils import run_bash_script
-
-        old_cwd = os.getcwd()
-        os.chdir(workspace)
-        try:
-            result = run_bash_script(code)
-        finally:
-            os.chdir(old_cwd)
-
-        artifacts = _scan_new_files(workspace, scan_start)
-        update_job_status(
-            jid,
-            COMPLETE,
-            stdout=result,
-            exit_code=0,
-            artifacts={"files": artifacts} if artifacts else None,
-            completed_at=datetime.now(timezone.utc),
-        )
-        _publish_status(job_id, COMPLETE)
-        _notify_pipeline(pipeline_id, job_id)
-        return result
-
-    except Exception as e:
-        logger.exception("Bash execution failed for job %s", job_id)
-        update_job_status(
-            jid, EXECUTOR_ERROR,
-            stderr=str(e), exit_code=1,
-            completed_at=datetime.now(timezone.utc),
-        )
-        _publish_status(job_id, EXECUTOR_ERROR, str(e))
-        _notify_pipeline(pipeline_id, job_id)
-        return f"Error in execution: {e}"
+    return _execute_job(self, job_id, session_id, code, timeout, "bash", pipeline_id)

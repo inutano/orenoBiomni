@@ -67,6 +67,11 @@ services:
 
   # Scale workers: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --scale worker=4
   worker:
+    # WARNING: The Docker socket mount (from docker-compose.yml) gives the worker
+    # root-equivalent access to the host. For production, strongly consider using
+    # Tecnativa/docker-socket-proxy to restrict which Docker API endpoints the
+    # worker can access (only containers.create, containers.start, containers.wait,
+    # containers.logs, containers.remove are needed).
     logging:
       driver: json-file
       options:

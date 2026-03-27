@@ -91,10 +91,23 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - WORKSPACE_BASE_PATH=/data/workspaces
       - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-2}
+      - SANDBOX_ENABLED=${SANDBOX_ENABLED:-false}
+      - SANDBOX_IMAGE_PYTHON=${SANDBOX_IMAGE_PYTHON:-orenoiomni-sandbox:latest}
+      - SANDBOX_IMAGE_R=${SANDBOX_IMAGE_R:-orenoiomni-sandbox:latest}
+      - SANDBOX_IMAGE_BASH=${SANDBOX_IMAGE_BASH:-orenoiomni-sandbox:latest}
+      - SANDBOX_CPUS=${SANDBOX_CPUS:-2.0}
+      - SANDBOX_MEMORY=${SANDBOX_MEMORY:-4g}
+      - SANDBOX_NETWORK_DISABLED=${SANDBOX_NETWORK_DISABLED:-true}
+      - SANDBOX_TMPFS_SIZE=${SANDBOX_TMPFS_SIZE:-512m}
     volumes:
       - biomni-data:/app/Biomni/data
       - workspaces:/data/workspaces
       - logs:/var/log/orenoiomni
+      # Required for sandbox execution (SANDBOX_ENABLED=true).
+      # WARNING: Mounting the Docker socket gives this container root-equivalent
+      # access to the host. In production, consider using a socket proxy like
+      # Tecnativa/docker-socket-proxy to restrict API calls.
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       redis:
         condition: service_healthy
@@ -106,6 +119,16 @@ services:
           cpus: "4"
           memory: 8G
     restart: unless-stopped
+
+  # Sandbox image for ephemeral code execution containers.
+  # Not a running service — only used to build the image.
+  # Build with: docker compose build sandbox
+  sandbox:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sandbox
+    image: orenoiomni-sandbox:latest
+    profiles: ["build-only"]
 
   # Ollama model server (GPU required)
   # Use: docker compose --profile gpu up
@@ -155,7 +178,6 @@ services:
     restart: unless-stopped
 
   # Redis (Celery broker + result backend)
-  # NOTE: Docker socket is intentionally NOT mounted into any container
   redis:
     image: redis:7-alpine
     command: >
