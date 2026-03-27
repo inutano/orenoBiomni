@@ -28,6 +28,8 @@ export function ChatInput({
   }
 
   function handleKeyDown(e: KeyboardEvent) {
+    // Skip when IME is composing (e.g. Japanese kana→kanji conversion)
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (isStreaming) return;
