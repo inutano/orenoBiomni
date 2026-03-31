@@ -12,6 +12,9 @@ _VALID_SOURCES = {"Ollama", "Anthropic", "OpenAI", "Custom"}
 class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://biomni:changeme@localhost:5432/orenoiomni"
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_recycle: int = 3600  # Recycle connections after 1 hour
 
     # Agent
     biomni_llm: str = "qwen3.5:35b-a3b-q8_0"

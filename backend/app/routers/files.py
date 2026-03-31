@@ -119,9 +119,10 @@ async def upload_files(
 @router.get("", response_model=FileListResponse)
 async def list_files(
     session_id: uuid.UUID,
+    limit: int = Query(default=200, le=1000),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all files in the session workspace (uploads and job artifacts)."""
+    """List files in the session workspace (uploads and job artifacts)."""
     await _require_active_session(db, session_id)
 
     workspace = _workspace_path(session_id)
@@ -135,8 +136,9 @@ async def list_files(
         if not file.is_file():
             continue
         info = _file_info(workspace, file)
-        file_list.append(info)
         total_size += info.size
+        if len(file_list) < limit:
+            file_list.append(info)
 
     return FileListResponse(files=file_list, total_size=total_size)
 

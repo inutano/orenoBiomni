@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from ..database import get_db, async_session
 from ..middleware.auth import get_current_user
 from ..models import User
-from ..schemas.session import ChatRequest, SessionCreate, SessionListItem, SessionRead
+from ..schemas.session import ChatRequest, MessageRead, SessionCreate, SessionListItem, SessionRead
 from ..services import agent_manager, session_service
 from ..routers.metrics import inc_chat
 from ..streaming.sse import format_sse
@@ -57,6 +57,20 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
     deleted = await session_service.delete_session(db, session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.get("/{session_id}/messages", response_model=list[MessageRead])
+async def get_messages(
+    session_id: uuid.UUID,
+    limit: int = 100,
+    before_seq: int | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get paginated messages for a session. Returns last `limit` messages by default."""
+    session = await session_service.get_session(db, session_id)
+    if not session or not session.is_active:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return await session_service.get_messages(db, session_id, limit=limit, before_seq=before_seq)
 
 
 @router.patch("/{session_id}", response_model=SessionListItem)

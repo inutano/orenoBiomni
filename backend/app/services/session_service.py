@@ -104,8 +104,33 @@ async def update_session_title(db: AsyncSession, session_id: uuid.UUID, title: s
     return True
 
 
-async def get_messages(db: AsyncSession, session_id: uuid.UUID) -> list[Message]:
-    result = await db.execute(
-        select(Message).where(Message.session_id == session_id).order_by(Message.sequence_num)
-    )
+async def get_messages(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    limit: int | None = None,
+    before_seq: int | None = None,
+) -> list[Message]:
+    """Get messages for a session, ordered by sequence number.
+
+    Args:
+        limit: Max messages to return. None = all (for agent context).
+        before_seq: Only return messages with sequence_num < this value (for pagination).
+    """
+    stmt = select(Message).where(Message.session_id == session_id)
+    if before_seq is not None:
+        stmt = stmt.where(Message.sequence_num < before_seq)
+    stmt = stmt.order_by(Message.sequence_num)
+    if limit is not None:
+        # Get the last N messages: subquery orders desc with limit, outer re-orders asc
+        stmt = (
+            select(Message)
+            .where(Message.session_id == session_id)
+            .order_by(Message.sequence_num.desc())
+            .limit(limit)
+        )
+        if before_seq is not None:
+            stmt = stmt.where(Message.sequence_num < before_seq)
+        result = await db.execute(stmt)
+        return list(reversed(result.scalars().all()))
+    result = await db.execute(stmt)
     return list(result.scalars().all())
