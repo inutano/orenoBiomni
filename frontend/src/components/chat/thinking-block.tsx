@@ -15,7 +15,7 @@ export function ThinkingBlock({ content }: { content: string }) {
       : content;
 
   return (
-    <div className="border border-[var(--border)] rounded-lg overflow-hidden text-sm">
+    <div className="border border-[var(--border)] rounded-lg overflow-hidden text-xs md:text-sm">
       <button
         onClick={() => setOpen(!open)}
         aria-expanded={open}
@@ -32,7 +32,7 @@ export function ThinkingBlock({ content }: { content: string }) {
         )}
       </button>
       {open && (
-        <div className="px-3 py-2 text-[var(--muted-foreground)] whitespace-pre-wrap break-all">
+        <div className="px-3 py-2 text-[var(--muted-foreground)] whitespace-pre-wrap break-words">
           {displayed}
           {isLong && (
             <button

@@ -18,7 +18,7 @@ export function MessageBubble({
   if (isUser) {
     return (
       <div className={cn("flex justify-end", className)}>
-        <div className="max-w-[80%] rounded-lg px-4 py-2 bg-[var(--accent)] text-[var(--accent-foreground)]">
+        <div className="max-w-[92%] md:max-w-[80%] rounded-lg px-4 py-2 bg-[var(--accent)] text-[var(--accent-foreground)]">
           {message.content}
         </div>
       </div>
@@ -27,7 +27,7 @@ export function MessageBubble({
 
   return (
     <div className={cn("flex justify-start", className)}>
-      <div className={cn("max-w-[85%]", message.type === "solution" && "w-full max-w-full")}>
+      <div className={cn("max-w-[95%] md:max-w-[85%]", message.type === "solution" && "w-full max-w-full")}>
         {message.type === "thinking" && <ThinkingBlock content={message.content} />}
         {message.type === "execute" && <ExecuteBlock content={message.content} />}
         {message.type === "solution" && <SolutionBlock content={message.content} />}

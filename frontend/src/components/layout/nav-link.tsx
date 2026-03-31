@@ -9,10 +9,12 @@ export function NavLink({
   href,
   icon,
   children,
+  onClick,
 }: {
   href: string;
   icon: ReactNode;
   children: ReactNode;
+  onClick?: () => void;
 }) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(href + "/");
@@ -20,8 +22,9 @@ export function NavLink({
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+        "flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors",
         active
           ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
           : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",

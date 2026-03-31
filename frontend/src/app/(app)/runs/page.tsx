@@ -7,7 +7,7 @@ export default function RunsPage() {
   const { runs, isLoading } = useRuns();
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       <h2 className="text-lg font-bold mb-4">Workflow Runs</h2>
       {isLoading ? (
         <div className="text-[var(--muted-foreground)]">Loading...</div>

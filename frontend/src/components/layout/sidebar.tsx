@@ -6,7 +6,12 @@ import { NavLink } from "./nav-link";
 import { useSessions } from "@/hooks/use-sessions";
 import { truncateId, relativeTime, cn } from "@/lib/utils";
 
-export function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ open, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { sessions, isLoading, error, create, remove } = useSessions();
@@ -18,10 +23,20 @@ export function Sidebar() {
   async function handleNewChat() {
     const session = await create();
     router.push(`/chat/${session.id}`);
+    onClose();
   }
 
   return (
-    <aside className="w-64 border-r border-[var(--border)] flex flex-col h-full bg-[var(--muted)]">
+    <aside
+      className={cn(
+        "w-64 border-r border-[var(--border)] flex flex-col h-full bg-[var(--muted)]",
+        // Mobile: fixed drawer with slide transition
+        "fixed inset-y-0 left-0 z-40 transition-transform duration-200",
+        open ? "translate-x-0" : "-translate-x-full",
+        // Desktop: static positioning, always visible
+        "md:static md:translate-x-0",
+      )}
+    >
       <div className="p-4 border-b border-[var(--border)]">
         <h1 className="text-lg font-bold">orenoBiomni</h1>
       </div>
@@ -30,7 +45,7 @@ export function Sidebar() {
         <button
           onClick={handleNewChat}
           aria-label="Start a new chat session"
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-80"
+          className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-80"
         >
           <Plus size={16} />
           New Chat
@@ -54,10 +69,13 @@ export function Sidebar() {
           <div
             key={s.id}
             className={cn(
-              "group flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer hover:bg-[var(--background)] transition-colors",
+              "group flex items-center gap-1 px-3 py-2.5 rounded-lg text-sm cursor-pointer hover:bg-[var(--background)] transition-colors",
               activeSessionId === s.id && "bg-[var(--background)] font-medium",
             )}
-            onClick={() => router.push(`/chat/${s.id}`)}
+            onClick={() => {
+              router.push(`/chat/${s.id}`);
+              onClose();
+            }}
           >
             <MessageSquare size={14} className="shrink-0 text-[var(--muted-foreground)]" />
             <span className="flex-1 truncate">
@@ -84,16 +102,16 @@ export function Sidebar() {
       </div>
 
       <nav className="p-2 border-t border-[var(--border)] space-y-1">
-        <NavLink href="/runs" icon={<ListTodo size={16} />}>
+        <NavLink href="/runs" icon={<ListTodo size={16} />} onClick={onClose}>
           Runs
         </NavLink>
-        <NavLink href="/pipelines" icon={<GitBranch size={16} />}>
+        <NavLink href="/pipelines" icon={<GitBranch size={16} />} onClick={onClose}>
           Pipelines
         </NavLink>
-        <NavLink href="/tools" icon={<Wrench size={16} />}>
+        <NavLink href="/tools" icon={<Wrench size={16} />} onClick={onClose}>
           Tools
         </NavLink>
-        <NavLink href="/settings" icon={<Settings size={16} />}>
+        <NavLink href="/settings" icon={<Settings size={16} />} onClick={onClose}>
           Settings
         </NavLink>
       </nav>

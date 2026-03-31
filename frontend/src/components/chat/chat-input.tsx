@@ -41,12 +41,13 @@ export function ChatInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    const maxH = window.innerWidth < 768 ? 120 : 200;
+    el.style.height = Math.min(el.scrollHeight, maxH) + "px";
   }
 
   return (
-    <div className="border-t border-[var(--border)] px-4 py-3">
-      <div className="flex items-end gap-2 max-w-3xl mx-auto">
+    <div className="border-t border-[var(--border)] px-2 py-2 md:px-4 md:py-3 shrink-0">
+      <div className="flex items-end gap-1.5 md:gap-2 max-w-3xl mx-auto">
         <textarea
           ref={textareaRef}
           value={text}

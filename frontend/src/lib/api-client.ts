@@ -42,6 +42,13 @@ export function getSession(id: string) {
   return apiFetch<SessionRead>(`/api/v1/sessions/${id}`);
 }
 
+export function updateSession(id: string, title: string) {
+  return apiFetch<SessionListItem>(`/api/v1/sessions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
 export function deleteSession(id: string) {
   return apiFetch<void>(`/api/v1/sessions/${id}`, { method: "DELETE" });
 }

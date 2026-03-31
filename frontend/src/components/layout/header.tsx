@@ -1,13 +1,17 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { useHealth } from "@/hooks/use-health";
 import { useAuth } from "@/hooks/use-auth";
 import { useSessions } from "@/hooks/use-sessions";
 import { truncateId } from "@/lib/utils";
 
-export function Header() {
+interface HeaderProps {
+  onMenuToggle?: () => void;
+}
+
+export function Header({ onMenuToggle }: HeaderProps) {
   const { health } = useHealth();
   const { user, isAuthenticated, providers, logout } = useAuth();
   const pathname = usePathname();
@@ -32,7 +36,20 @@ export function Header() {
 
   return (
     <header className="h-12 border-b border-[var(--border)] flex items-center justify-between px-4">
-      <h2 className="text-sm font-medium truncate">{pageTitle}</h2>
+      <div className="flex items-center gap-2">
+        {onMenuToggle && (
+          <button
+            onClick={onMenuToggle}
+            className="md:hidden p-2 -ml-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            aria-label="Toggle sidebar menu"
+          >
+            <Menu size={20} />
+          </button>
+        )}
+        <h2 className="text-sm font-medium truncate">
+          {pageTitle || <span className="md:hidden">orenoBiomni</span>}
+        </h2>
+      </div>
       <div className="flex items-center gap-3">
         {isAuthenticated && providers?.auth_enabled && user && (
           <div className="flex items-center gap-2 text-xs">
@@ -64,7 +81,7 @@ export function Header() {
           <span
             className={`w-2 h-2 rounded-full ${health ? "bg-green-500" : "bg-red-500"}`}
           />
-          {health ? "Backend connected" : "Backend offline"}
+          <span className="hidden sm:inline">{health ? "Backend connected" : "Backend offline"}</span>
         </div>
       </div>
     </header>

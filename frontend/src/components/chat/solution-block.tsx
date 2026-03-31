@@ -7,7 +7,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 export function SolutionBlock({ content }: { content: string }) {
   return (
-    <div className="prose-custom max-w-none">
+    <div className="prose-custom max-w-none overflow-x-auto text-sm md:text-base">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

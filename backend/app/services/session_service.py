@@ -94,6 +94,16 @@ async def add_message(
     return message
 
 
+async def update_session_title(db: AsyncSession, session_id: uuid.UUID, title: str) -> bool:
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        return False
+    session.title = title[:255]
+    await db.commit()
+    return True
+
+
 async def get_messages(db: AsyncSession, session_id: uuid.UUID) -> list[Message]:
     result = await db.execute(
         select(Message).where(Message.session_id == session_id).order_by(Message.sequence_num)

@@ -1,16 +1,25 @@
+import asyncio
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from ..database import get_db
+from ..database import get_db, async_session
 from ..middleware.auth import get_current_user
 from ..models import User
 from ..schemas.session import ChatRequest, SessionCreate, SessionListItem, SessionRead
 from ..services import agent_manager, session_service
 from ..routers.metrics import inc_chat
 from ..streaming.sse import format_sse
+
+logger = logging.getLogger(__name__)
+
+
+class SessionUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
 
 router = APIRouter(prefix="/sessions")
 
@@ -50,6 +59,19 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="Session not found")
 
 
+@router.patch("/{session_id}", response_model=SessionListItem)
+async def update_session(
+    session_id: uuid.UUID,
+    body: SessionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    updated = await session_service.update_session_title(db, session_id, body.title)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = await session_service.get_session(db, session_id)
+    return session
+
+
 @router.post("/{session_id}/chat")
 async def chat(session_id: uuid.UUID, body: ChatRequest, db: AsyncSession = Depends(get_db)):
     # Validate session
@@ -79,8 +101,12 @@ async def chat(session_id: uuid.UUID, body: ChatRequest, db: AsyncSession = Depe
         elif m.role == "assistant":
             lc_messages.append(AIMessage(content=m.content))
 
+    # Check if this is the first user message (title generation candidate)
+    is_first_message = len(db_messages) == 1  # only the user message we just added
+
     # Stream agent response
     async def event_generator():
+        solution_text = ""
         async for event in agent_manager.stream_chat(session_id, lc_messages):
             # Persist assistant messages to DB
             if event["event"] in ("thinking", "execute", "solution", "error") and "content" in event.get("data", {}):
@@ -91,6 +117,54 @@ async def chat(session_id: uuid.UUID, body: ChatRequest, db: AsyncSession = Depe
                     content=event["data"]["content"],
                     message_type=event["event"],
                 )
+                if event["event"] == "solution":
+                    solution_text = event["data"]["content"]
             yield event
 
+        # Generate title after the first exchange completes
+        if is_first_message and session.title is None:
+            asyncio.create_task(
+                _generate_title(session_id, body.message, solution_text)
+            )
+
     return EventSourceResponse(format_sse(event_generator()))
+
+
+async def _generate_title(session_id: uuid.UUID, user_message: str, assistant_response: str) -> None:
+    """Generate a short title for the session using the LLM."""
+    try:
+        from ..config import settings
+        from biomni.llm import get_llm
+        from langchain_core.messages import HumanMessage as HM
+
+        llm = await asyncio.to_thread(
+            get_llm,
+            model=settings.biomni_llm,
+            source=settings.biomni_source,
+            base_url=settings.biomni_custom_base_url,
+            api_key=settings.biomni_custom_api_key,
+            temperature=0.3,
+        )
+
+        prompt = (
+            "Generate a concise title (3-8 words) for this conversation. "
+            "Return ONLY the title text, nothing else. No quotes, no punctuation at the end.\n\n"
+            f"User: {user_message[:300]}\n"
+            f"Assistant: {assistant_response[:500]}"
+        )
+
+        result = await asyncio.to_thread(llm.invoke, [HM(content=prompt)])
+        title = result.content.strip().strip('"\'').strip()
+
+        # Strip any <think>...</think> tags from reasoning models
+        import re
+        title = re.sub(r"<think(?:ing)?>.*?</think(?:ing)?>", "", title, flags=re.DOTALL).strip()
+
+        if title and len(title) <= 255:
+            async with async_session() as db:
+                await session_service.update_session_title(db, session_id, title)
+            logger.info("Generated title for session %s: %s", session_id, title)
+        else:
+            logger.warning("Title generation returned empty or too long result for session %s", session_id)
+    except Exception:
+        logger.exception("Failed to generate title for session %s", session_id)
