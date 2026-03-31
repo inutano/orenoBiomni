@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions/{session_id}/files")
 
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+MAX_FILE_SIZE = settings.max_upload_size_mb * 1024 * 1024
 
 
 def _workspace_path(session_id: uuid.UUID) -> Path:

@@ -126,13 +126,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-app.add_middleware(RateLimitMiddleware, requests_per_minute=300)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_rpm)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

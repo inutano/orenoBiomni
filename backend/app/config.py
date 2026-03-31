@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:7860"]
+    rate_limit_rpm: int = 300
+    max_message_length: int = 10000
+    max_upload_size_mb: int = 100
 
     # Celery / Redis
     redis_url: str = "redis://redis:6379/0"
@@ -71,6 +74,11 @@ class Settings(BaseSettings):
             raise ValueError("OPENAI_API_KEY is required when BIOMNI_SOURCE=OpenAI")
         if self.biomni_source == "Custom" and not self.biomni_custom_base_url:
             raise ValueError("BIOMNI_CUSTOM_BASE_URL is required when BIOMNI_SOURCE=Custom")
+        if self.auth_enabled and self.auth_secret == "change-me-in-production":
+            raise ValueError(
+                "AUTH_SECRET must be set to a secure value when AUTH_ENABLED=true. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+            )
         return self
 
     @property

@@ -43,4 +43,4 @@ class SessionListItem(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=32768)
+    message: str = Field(..., min_length=1, max_length=10000)
